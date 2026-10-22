@@ -1,0 +1,11 @@
+rdkit>=2026.09
+lightgbm>=4.7
+scikit-learn>=1.9
+scipy>=1.18
+pandas>=2.2
+numpy>=2.0
+pyyaml>=6.0
+pytest>=8.0
+# 4주차 이후
+# torch>=2.4
+# torch-geometric>=2.6

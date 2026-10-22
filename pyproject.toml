@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "labelbudget"
+version = "0.0.1"
+description = "자기지도 사전학습 이득이 라벨 몇 개까지 유효한지 측정하는 연구 코드"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "rdkit>=2026.09",
+    "lightgbm>=4.7",
+    "scikit-learn>=1.9",
+    "scipy>=1.18",
+    "pandas>=2.2",
+    "numpy>=2.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

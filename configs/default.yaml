@@ -1,0 +1,51 @@
+# 값의 근거는 docs/design/02_IMPLEMENTATION_SPEC.md 의 해당 절.
+
+datasets:
+  aqsoldb:
+    task: regression
+    path: data/raw/aqsoldb.csv          # §1.2 수동 배치
+    smiles_col: SMILES
+    label_col: Solubility
+    keep_cols: [SD, Ocurrences, Group]  # §4.3
+    conflict_rule: drop                 # §4.2
+    conflict_tolerance: 0.5
+  esol:
+    task: regression
+    smiles_col: smiles
+    label_col: measured log solubility in mols per litre
+    conflict_rule: median
+    conflict_tolerance: 0.5
+  tox21:
+    task: classification
+    smiles_col: smiles
+    target_task: SR-ARE                 # §1.4
+    drop_cols: ["Unnamed: 0", mol_id]
+    conflict_rule: majority
+
+standardize:                            # §3.3
+  stereo: keep
+  canonicalize_tautomer: true
+  strip_salts: false                    # 용해도는 반드시 false (03 §4)
+  reject_multi_component: true
+  organic_only: true
+  min_heavy_atoms: 3
+  max_heavy_atoms: 100
+  max_mol_weight: 1000.0
+
+splits:                                 # §6
+  strategies: [random, scaffold, scaffold_random]
+  frac_train: 0.8
+  frac_valid: 0.1
+  frac_test: 0.1
+
+budgets:                                # §10. null = 전체
+  regression: [100, 300, 1000, 3000, null]
+  classification: [300, 1000, 3000, null]
+  min_positive: 20
+
+seeds:
+  n_split_seeds: 10
+  n_subsample_seeds: 10                 # 분할 시드와 분리
+
+hp_search:
+  n_trials: null                        # 미정. 모든 모델 동일 값 (§7.3)
