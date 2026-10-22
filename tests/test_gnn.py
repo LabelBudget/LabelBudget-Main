@@ -43,7 +43,7 @@ def test_estimator_learns_and_is_deterministic(toy):
     a, b = fit(), fit()
     rmse = np.sqrt(((a.predict(Gva) - yva) ** 2).mean())
     assert rmse < yva.std()                        # 평균 예측보다 낫다
-    assert np.allclose(a.predict(Gva), b.predict(Gva))  # 같은 시드 → 같은 결과 (CPU)
+    assert np.array_equal(a.predict(Gva), b.predict(Gva))  # 같은 시드 → 비트 단위로 같은 결과 (CPU 결정론 모드)
     assert a.history[a.best_epoch] == max(a.history)  # 최고 valid 시점의 가중치를 복원
 
 
@@ -67,3 +67,13 @@ def test_run_grid_with_gnn(toy, tmp_path):
     assert set(res.model) == {"C_dmpnn", "B_desc_lgbm"} and sorted(res.hp_n_trials.unique()) == [1, 2]
     assert res.groupby("model").config_hash.nunique().eq(1).all()
     assert res[res.model == "C_dmpnn"].config_hash.iloc[0] != res[res.model == "B_desc_lgbm"].config_hash.iloc[0]
+
+
+def test_deterministic_mode_is_scoped_and_cpu_only(toy):
+    smiles, y = toy
+    G = [mol_graph(s) for s in smiles]
+    before = torch.are_deterministic_algorithms_enabled()
+    DMPNNEstimator("regression", FAST, seed=0, valid=(G[96:], y[96:]), max_epochs=2).fit(G[:96], y[:96])
+    assert torch.are_deterministic_algorithms_enabled() == before  # 전역 설정을 남기지 않는다
+    with pytest.raises(ValueError, match="CPU"):
+        DMPNNEstimator("regression", FAST, seed=0, valid=(G, y), device="mps")

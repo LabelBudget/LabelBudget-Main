@@ -98,11 +98,13 @@ def test_run_grid_trial_checkpoints(toy, tmp_path):
     assert rmse.hp_valid_score[4] <= rmse.hp_valid_score[1]
 
 
-def test_baseline_path_does_not_load_torch():
-    # torch의 libomp가 먼저 로드되면 LightGBM n_jobs>1 학습이 세그폴트로 죽는다 (2026-10-23 민감도 분석에서 발생)
+def test_runner_import_loads_neither_torch_nor_lightgbm():
+    # 둘은 각자 libomp를 싣는다. torch가 먼저면 LightGBM n_jobs>1 학습이, lightgbm이 먼저면 torch 학습이
+    # 세그폴트로 죽는다 (2026-10-23 민감도 분석·GNN 파일럿에서 발생). 실제로 쓰는 경로에서만 로드해야 한다
     import subprocess
     import sys
-    code = "import sys, labelbudget.evaluation.runner; assert 'torch' not in sys.modules"
+    code = ("import sys, labelbudget.evaluation.runner, labelbudget.models.gbm; "
+            "assert 'torch' not in sys.modules and 'lightgbm' not in sys.modules")
     assert subprocess.run([sys.executable, "-c", code]).returncode == 0
 
 

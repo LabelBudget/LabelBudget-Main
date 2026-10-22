@@ -6,7 +6,8 @@ LightGBM과 같은 `search_trace`/체크포인트 경로를 그대로 쓰기 위
 from __future__ import annotations
 
 import copy
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 
 import numpy as np
 import torch
@@ -18,12 +19,29 @@ from labelbudget.models.dmpnn import DMPNN
 from labelbudget.models.gnn_space import GNN_SPACE  # noqa: F401  (기존 import 경로 유지)
 
 
+@contextmanager
+def _deterministic(on: bool) -> Iterator[None]:
+    """멀티스레드 index_add_의 누적 순서를 고정한다. 전역 설정이라 끝나면 이전 값으로 되돌린다."""
+    prev = torch.are_deterministic_algorithms_enabled()
+    torch.use_deterministic_algorithms(on or prev)
+    try:
+        yield
+    finally:
+        torch.use_deterministic_algorithms(prev)
+
+
 class DMPNNEstimator:
     def __init__(self, task: str, params: dict, seed: int, *, valid: tuple[Sequence[MolGraph], np.ndarray],
-                 max_epochs: int = 100, patience: int = 10, device: str = "cpu", eval_batch: int = 512):
+                 max_epochs: int = 100, patience: int = 10, device: str = "cpu", deterministic: bool = True,
+                 eval_batch: int = 512):
+        # 결정 G3 (2026-10-23): CPU + 결정론 모드. 끄면 같은 시드에서도 조기 종료 시점이 갈려 결과가 달라진다.
+        # MPS는 index_add_ 역전파에 결정론 구현이 없어 deterministic=True와 함께 쓸 수 없다 (docs/bench_gnn.md)
+        if deterministic and device != "cpu":
+            raise ValueError(f"deterministic=True는 CPU에서만 가능하다 (device={device})")
         self.task, self.params, self.seed = task, dict(params), seed
         self.X_va, self.y_va = valid
         self.max_epochs, self.patience, self.device, self.eval_batch = max_epochs, patience, device, eval_batch
+        self.deterministic = deterministic
         self.history: list[float] = []
         self.best_epoch = -1
 
@@ -35,7 +53,7 @@ class DMPNNEstimator:
     def _raw(self, X: Sequence[MolGraph]) -> np.ndarray:
         self.model.eval()
         out = []
-        with torch.no_grad():
+        with torch.no_grad(), _deterministic(self.deterministic):
             for i in range(0, len(X), self.eval_batch):
                 out.append(self.model(batch_graphs(X[i:i + self.eval_batch]).to(self.device)).cpu().numpy())
         return np.concatenate(out) if out else np.zeros(0)
@@ -48,6 +66,10 @@ class DMPNNEstimator:
         return -np.inf if np.isnan(s) else s
 
     def fit(self, X: Sequence[MolGraph], y) -> DMPNNEstimator:
+        with _deterministic(self.deterministic):
+            return self._fit(X, y)
+
+    def _fit(self, X: Sequence[MolGraph], y) -> DMPNNEstimator:
         torch.manual_seed(self.seed)
         rng = np.random.default_rng(self.seed)
         y = np.asarray(y, dtype=np.float64)

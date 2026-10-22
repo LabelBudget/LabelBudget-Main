@@ -153,6 +153,9 @@ def run_grid(
             "torch" in sys.modules or any(MODELS[m].kind == "gnn" for m in models)):
         # torch의 libomp와 LightGBM의 libomp가 충돌해 멀티스레드 학습이 세그폴트로 죽는다
         raise RuntimeError("LightGBM(n_jobs>1)과 torch를 한 프로세스에서 쓸 수 없다: 베이스라인과 GNN을 따로 실행할 것")
+    if any(MODELS[m].kind == "gnn" for m in models) and "lightgbm" in sys.modules and "torch" not in sys.modules:
+        # 반대 방향도 같다: lightgbm이 먼저 실린 뒤 torch를 실으면 torch 멀티스레드 연산이 죽는다
+        raise RuntimeError("lightgbm이 torch보다 먼저 로드됐다: GNN은 lightgbm을 import하지 않은 프로세스에서 실행할 것")
 
     def chash(spec: ModelSpec) -> str:
         extra = {**(hash_extra or {}), **({"gnn": gnn_opts} if spec.kind == "gnn" else {})}

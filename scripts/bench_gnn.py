@@ -68,12 +68,13 @@ def main() -> int:
             for rep in range(args.repeat):
                 t0 = time.time()
                 est = DMPNNEstimator("regression", DEFAULT, seed=0, valid=([graphs[i] for i in va], y[va]),
-                                     max_epochs=max_epochs, patience=gnn["patience"], device=device)
+                                     max_epochs=max_epochs, patience=gnn["patience"], device=device,
+                                     deterministic=device == "cpu")  # MPS는 결정론 모드 불가
                 est.fit([graphs[i] for i in tr], y[tr])
                 sec = time.time() - t0
                 pred = est.predict([graphs[i] for i in te])
                 preds.append(pred)
-                rows.append({"device": device, "n_labels": "full" if n is None else n, "rep": rep,
+                rows.append({"device": device, "deterministic": est.deterministic, "n_labels": "full" if n is None else n, "rep": rep,
                              "fit_sec": round(sec, 1), "epochs": len(est.history),
                              "sec_per_epoch": round(sec / max(len(est.history), 1), 2),
                              "best_epoch": est.best_epoch, "test_rmse": regression_metrics(y[te], pred)["rmse"]})

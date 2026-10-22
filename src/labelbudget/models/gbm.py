@@ -7,7 +7,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-import lightgbm as lgb
 import numpy as np
 
 from labelbudget.evaluation.metrics import classification_metrics, regression_metrics
@@ -49,6 +48,8 @@ def sample_params(space: dict[str, tuple], rng: np.random.Generator) -> dict[str
 
 
 def make_lgbm(task: str, params: dict, seed: int, n_jobs: int = 1):
+    import lightgbm as lgb  # 지연 import: lightgbm이 먼저 실린 프로세스에서는 torch 멀티스레드 연산이 죽는다
+
     common = dict(random_state=seed, n_jobs=n_jobs, verbose=-1, deterministic=True, force_col_wise=True,
                   subsample_freq=1, **params)
     return lgb.LGBMRegressor(**common) if task == "regression" else lgb.LGBMClassifier(**common)

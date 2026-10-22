@@ -55,10 +55,11 @@ hp_search:
   trial_checkpoints: [5, 10, 20]        # 한 번 탐색으로 앞 k회 최고 모델을 각각 기록 (hp_n_trials 컬럼)
   valid_policy: full                    # 주 분석: valid 고정 (~10%). 리포트에 "학습 라벨 N + valid" 명기
 
-gnn:                                    # 비교군 C·D (스펙 04). 값은 벤치마크 후 확정
+gnn:                                    # 비교군 C·D (스펙 04)
   max_epochs: 100
   patience: 10
-  device: cpu                           # 결정 G3: 벤치마크(CPU vs MPS) 후 확정
+  device: cpu                           # 결정 G3 (2026-10-23): CPU + 결정론 모드. MPS는 재현 불가 (docs/bench_gnn.md)
+  deterministic: true
 
 sensitivity:                            # 민감도 분석: valid도 예산 비율대로 축소 (저예산 구간만)
   valid_policy: proportional
