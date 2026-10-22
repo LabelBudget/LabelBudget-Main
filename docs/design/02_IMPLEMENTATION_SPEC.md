@@ -319,7 +319,7 @@ class ConflictRule(str, Enum):
 | 데이터셋 | tolerance | 기본 규칙 | 근거 |
 |---|---:|---|---|
 | **AqSolDB** | **0.5** | **DROP** | 염 미제거 정책에서는 잔존 충돌이 6그룹뿐. 병합하지 말고 버린다 |
-| ESOL | 0.5 | MEDIAN | 단일 출처, 측정 이질성 낮음 |
+| ESOL | 0.5 | **DROP** | SMILES에 입체 정보가 없어 만니톨(0.06)/소르비톨(1.09)이 병합된다. MEDIAN은 가짜 라벨 0.575를 만든다 |
 | Lipophilicity | 0.5 | MEDIAN | — |
 | Tox21 | — | MAJORITY | 분류. `tolerance` 무시, `nunique()>1`이면 충돌 |
 
@@ -703,3 +703,4 @@ python scripts/audit_dataset.py --dataset tox21 --task SR-ARE --out docs/audit_t
 | 2026-10-22 | `stereo=keep`일 때 토토머 정규화의 입체 제거(`tautomerRemoveSp3Stereo`/`BondStereo`)를 끈다 | RDKit 기본값이 L/D-알라닌을 병합함을 실측 |
 | 2026-10-22 | 토토머 정규화 유지 + 원장에 `n_duplicates_incoming`, `n_duplicates_created_by_tautomer` 추가, 데이터 카드 §5에서 발생 단계별 집계 | 토토머 포함 시 AqSolDB 중복 6→26그룹 (`03` 상단 주석) |
 | 2026-10-22 | 03 감사 수치는 토토머 정규화 없이 측정된 값임을 명기 | 재측정 |
+| 2026-10-22 | ESOL 충돌 규칙 MEDIAN → **DROP** (최종 1,110 → 1,109) | 입체 정보 없는 SMILES에서 만니톨/소르비톨 병합, 중앙값이 실측에 없는 라벨 생성 |

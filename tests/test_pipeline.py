@@ -64,7 +64,7 @@ def _e2e(name, label=None):
         pytest.skip("원본 파일 없음")
     src = get_source(name)
     df = load_labeled(name, label=label, allow_download=False)
-    rule = ConflictRule.MAJORITY if src.task == "classification" else ConflictRule.MEDIAN
+    rule = ConflictRule.MAJORITY if src.task == "classification" else ConflictRule.DROP
     out, L = curate(df, dataset=name, task=src.task, label_name=df.attrs["label_name"],
                     label_unit=df.attrs["label_unit"], conflict_rule=rule)
     assert 0 < L.n_after_dedupe <= L.n_raw and out.inchikey.is_unique
