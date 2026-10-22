@@ -15,17 +15,7 @@ from torch import nn
 from labelbudget.evaluation.metrics import classification_metrics, regression_metrics
 from labelbudget.featurize.graph import MolGraph, batch_graphs
 from labelbudget.models.dmpnn import DMPNN
-
-# 탐색 공간 (초안, 스펙 04 §2.4). 종류는 gbm.sample_params와 같은 규약
-GNN_SPACE: dict[str, tuple] = {
-    "d_h": ("int_log", 128, 512),
-    "depth": ("int", 2, 6),
-    "dropout": ("float", 0.0, 0.4),
-    "lr": ("log", 1e-4, 3e-3),
-    "ffn_hidden": ("int_log", 128, 512),
-    "ffn_layers": ("int", 1, 3),
-    "batch_size": ("choice", 32, 64),
-}
+from labelbudget.models.gnn_space import GNN_SPACE  # noqa: F401  (기존 import 경로 유지)
 
 
 class DMPNNEstimator:

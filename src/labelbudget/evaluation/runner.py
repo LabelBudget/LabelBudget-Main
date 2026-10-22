@@ -10,10 +10,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
@@ -23,10 +25,12 @@ from labelbudget.evaluation.budget import budget_info, subsample_train
 from labelbudget.evaluation.metrics import choose_threshold, classification_metrics, regression_metrics
 from labelbudget.featurize.descriptors import DescriptorSelector, compute_descriptors
 from labelbudget.featurize.fingerprints import ecfp4
-from labelbudget.featurize.graph import MolGraph, mol_graph
 from labelbudget.models.gbm import LGBM_SPACE, best_of, make_lgbm, predict, search_trace
-from labelbudget.models.gnn import GNN_SPACE, DMPNNEstimator
+from labelbudget.models.gnn_space import GNN_SPACE
 from labelbudget.splits.strategies import make_split
+
+if TYPE_CHECKING:
+    from labelbudget.featurize.graph import MolGraph
 
 
 @dataclass(frozen=True)
@@ -61,6 +65,7 @@ class FeatureStore:
     @property
     def graphs(self) -> list[MolGraph]:
         if self._graphs is None:
+            from labelbudget.featurize.graph import mol_graph  # torch를 끌어온다 — GNN 경로에서만
             self._graphs = [mol_graph(s) for s in self.smiles]
         return self._graphs
 
@@ -144,6 +149,10 @@ def run_grid(
     keys = df.inchikey.to_numpy()
     checkpoints = sorted({k for k in (trial_checkpoints or []) if k < n_trials} | {n_trials})
     gnn_opts = gnn_opts or {}
+    if n_jobs > 1 and any(MODELS[m].kind == "lgbm" for m in models) and (
+            "torch" in sys.modules or any(MODELS[m].kind == "gnn" for m in models)):
+        # torch의 libomp와 LightGBM의 libomp가 충돌해 멀티스레드 학습이 세그폴트로 죽는다
+        raise RuntimeError("LightGBM(n_jobs>1)과 torch를 한 프로세스에서 쓸 수 없다: 베이스라인과 GNN을 따로 실행할 것")
 
     def chash(spec: ModelSpec) -> str:
         extra = {**(hash_extra or {}), **({"gnn": gnn_opts} if spec.kind == "gnn" else {})}
@@ -180,6 +189,8 @@ def run_grid(
                         def model_fn(params, seed):
                             return make_lgbm(task, params, seed, n_jobs=n_jobs)
                     else:
+                        from labelbudget.models.gnn import DMPNNEstimator
+
                         def model_fn(params, seed, X_va=X_va, y_va=y_all[va]):
                             return DMPNNEstimator(task, params, seed, valid=(X_va, y_va), **gnn_opts)
                     trace = search_trace(model_fn, spec.space, X_tr, y_all[tr], X_va, y_all[va],

@@ -96,3 +96,18 @@ def test_run_grid_trial_checkpoints(toy, tmp_path):
     assert sorted(res.hp_n_trials.unique()) == [1, 2, 4]  # 99는 n_trials 초과라 제외, n_trials는 항상 포함
     rmse = res[res.metric_name == "rmse"].set_index("hp_n_trials")
     assert rmse.hp_valid_score[4] <= rmse.hp_valid_score[1]
+
+
+def test_baseline_path_does_not_load_torch():
+    # torch의 libomp가 먼저 로드되면 LightGBM n_jobs>1 학습이 세그폴트로 죽는다 (2026-10-23 민감도 분석에서 발생)
+    import subprocess
+    import sys
+    code = "import sys, labelbudget.evaluation.runner; assert 'torch' not in sys.modules"
+    assert subprocess.run([sys.executable, "-c", code]).returncode == 0
+
+
+def test_run_grid_refuses_lgbm_threads_with_torch(toy, tmp_path):
+    with pytest.raises(RuntimeError, match="한 프로세스"):
+        run_grid(toy, dataset="toy", task="regression", target_task="y", features=FeatureStore.build(toy),
+                 models=["B_desc_lgbm", "C_dmpnn"], strategies=["random"], split_seeds=[0], budgets=[None],
+                 n_trials=1, out_path=tmp_path / "t.csv", n_jobs=2, log=lambda _: None)
