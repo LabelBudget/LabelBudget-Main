@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 from labelbudget.curate.dedupe import ConflictRule, deduplicate
-from labelbudget.curate.standardize import StandardizeConfig, Standardizer
+from labelbudget.curate.standardize import StandardizeConfig, Standardizer, StandardizeResult
 
 IMBALANCE_WARN = 5.0
 
@@ -73,29 +73,58 @@ def label_stats(y: pd.Series, task: str) -> dict:
             "p25": float(q[0.25]), "median": float(q[0.5]), "p75": float(q[0.75]), "max": float(y.max())}
 
 
-def _duplicate_origins(df: pd.DataFrame, task: str) -> tuple[dict, list]:
-    """최종 키 기준 중복 그룹을 발생 단계로 분류한다."""
-    counts = {"incoming": 0, "standardized": 0, "tautomer": 0}
-    spreads = {"standardized": [], "tautomer": []}
-    examples = []
+def standardize_frame(
+    df: pd.DataFrame, std: Standardizer, keep_cols: tuple[str, ...] = ()
+) -> tuple[pd.DataFrame, list[StandardizeResult]]:
+    """`smiles`, `label` 입력을 표준화한다. 통과 행 DataFrame과 전체 결과 목록을 반환한다."""
+    results = [std(s) for s in df.smiles]
+    ok = np.array([r.ok for r in results], dtype=bool)
+    passed = pd.DataFrame({
+        "smiles": [r.smiles for r in results if r.ok],
+        "smiles_input": df.smiles[ok].tolist(),
+        "inchikey": [r.inchikey for r in results if r.ok],
+        "input_inchikey": [r.input_inchikey for r in results if r.ok],
+        "pre_tautomer_inchikey": [r.pre_tautomer_inchikey for r in results if r.ok],
+        "label": df.label[ok].tolist(),
+    })
+    for c in keep_cols:
+        passed[c] = df[c][ok].tolist()
+    return passed, results
+
+
+def duplicate_groups(df: pd.DataFrame, task: str) -> pd.DataFrame:
+    """최종 키 기준 중복 그룹을 한 행씩: key, n, spread, origin.
+
+    origin — incoming: 입력 키가 이미 같았음 / tautomer: 토토머 정규화가 관여 / standardized: 그 외 표준화 단계
+    """
+    rows = []
     for key, g in df.groupby("inchikey", sort=False):
         if len(g) < 2:
             continue
         # 입력 키를 못 만든 행은 각자 고유로 본다
         input_keys = g["input_inchikey"].fillna(pd.Series([f"__na_{i}" for i in g.index], index=g.index))
-        sp = float(g.label.max() - g.label.min()) if task == "regression" else float(g.label.nunique() - 1)
         if input_keys.nunique() == 1:
-            counts["incoming"] += 1
-            continue
-        counts["standardized"] += 1
-        spreads["standardized"].append(sp)
-        if g["pre_tautomer_inchikey"].nunique(dropna=False) > 1:
-            counts["tautomer"] += 1
-            spreads["tautomer"].append(sp)
-            examples.append({"key": key, "spread": sp, "labels": g.label.tolist(),
-                             "smiles_input": g.smiles_input.tolist()})
-    stats = {k: _spread_stats(pd.Series(v, dtype=float), task) for k, v in spreads.items()}
-    examples.sort(key=lambda e: -e["spread"])
+            origin = "incoming"
+        elif g["pre_tautomer_inchikey"].nunique(dropna=False) > 1:
+            origin = "tautomer"
+        else:
+            origin = "standardized"
+        sp = float(g.label.max() - g.label.min()) if task == "regression" else float(g.label.nunique() - 1)
+        rows.append({"key": key, "n": len(g), "spread": sp, "origin": origin, "index": g.index.tolist()})
+    return pd.DataFrame(rows, columns=["key", "n", "spread", "origin", "index"])
+
+
+def _duplicate_origins(df: pd.DataFrame, task: str) -> tuple[dict, list]:
+    """원장용 집계. standardized 수에는 tautomer가 포함된다."""
+    groups = duplicate_groups(df, task)
+    created = groups[groups.origin != "incoming"]
+    taut = groups[groups.origin == "tautomer"]
+    counts = {"incoming": int((groups.origin == "incoming").sum()),
+              "standardized": len(created), "tautomer": len(taut)}
+    stats = {"standardized": _spread_stats(created.spread, task), "tautomer": _spread_stats(taut.spread, task)}
+    examples = [{"key": r.key, "spread": r.spread, "labels": df.label[r.index].tolist(),
+                 "smiles_input": df.smiles_input[r.index].tolist()}
+                for r in taut.sort_values("spread", ascending=False).itertuples()]
     return {"counts": counts, "stats": stats}, examples
 
 
@@ -122,23 +151,10 @@ def curate(
     work = df.dropna(subset=["smiles", "label"]).reset_index(drop=True)
     ledger.n_after_missing = len(work)
 
-    std = Standardizer(cfg)
-    results = [std(s) for s in work.smiles]
-    ok = np.array([r.ok for r in results])
+    passed, results = standardize_frame(work, Standardizer(cfg), keep_cols)
     ledger.reject_reasons = dict(Counter(r.reason for r in results if not r.ok).most_common())
     ledger.standardize_notes = dict(Counter(n for r in results if r.ok for n in r.notes).most_common())
     ledger.n_structure_changed = sum(r.changed for r in results if r.ok)
-
-    passed = pd.DataFrame({
-        "smiles": [r.smiles for r in results if r.ok],
-        "smiles_input": work.smiles[ok].tolist(),
-        "inchikey": [r.inchikey for r in results if r.ok],
-        "input_inchikey": [r.input_inchikey for r in results if r.ok],
-        "pre_tautomer_inchikey": [r.pre_tautomer_inchikey for r in results if r.ok],
-        "label": work.label[ok].tolist(),
-    })
-    for c in keep_cols:
-        passed[c] = work[c][ok].tolist()
     ledger.n_after_standardize = len(passed)
 
     origins, taut_examples = _duplicate_origins(passed, task)

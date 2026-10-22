@@ -23,6 +23,7 @@ class DatasetSource:
     default_label: str | None = None
     drop_cols: tuple[str, ...] = ()
     keep_cols: tuple[str, ...] = ()
+    name_col: str | None = None                  # 감사 보고서용 화합물명
     manual_sources: tuple[str, ...] = field(default=())
 
     @property
@@ -40,6 +41,7 @@ SOURCES: dict[str, DatasetSource] = {
         label_unit="log10(mol/L)",
         expected_shape=(9982, 26),
         keep_cols=("SD", "Ocurrences", "Group"),
+        name_col="Name",
         manual_sources=(
             "https://www.openml.org/d/43546  (브라우저로 다운로드)",
             "https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/OVHAW8",
@@ -56,6 +58,7 @@ SOURCES: dict[str, DatasetSource] = {
         label_unit="log10(mol/L)",
         expected_shape=(1128, 10),
         url="https://raw.githubusercontent.com/deepchem/deepchem/master/datasets/delaney-processed.csv",
+        name_col="Compound ID",
     ),
     "tox21": DatasetSource(
         name="tox21",
