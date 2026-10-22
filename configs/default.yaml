@@ -13,7 +13,7 @@ datasets:
     task: regression
     smiles_col: smiles
     label_col: measured log solubility in mols per litre
-    conflict_rule: median
+    conflict_rule: drop                 # SMILES에 입체 없음 → 입체이성질체 병합 위험
     conflict_tolerance: 0.5
   tox21:
     task: classification
