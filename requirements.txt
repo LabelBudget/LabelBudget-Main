@@ -10,3 +10,5 @@ pytest>=8.0
 torch==2.14.1
 torch-geometric==2.8.1
 # chemprop은 별도 환경 — environment-equiv.yml
+# 리포트 그림
+matplotlib==3.11.2
