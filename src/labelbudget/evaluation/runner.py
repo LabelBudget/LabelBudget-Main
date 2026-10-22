@@ -4,6 +4,7 @@
 - 조합마다 결과를 바로 CSV에 append하고, 이미 있는 조합은 건너뛴다 (resume)
 - valid_policy: full = valid 고정 / proportional = valid도 train:valid 비율대로 예산에 맞춰 줄인다
 - trial_checkpoints: n_trials회 탐색 한 번으로 앞 k회 최고 모델을 각각 평가해 hp_n_trials=k 행으로 남긴다
+- LightGBM(A·B)과 D-MPNN(C)이 같은 탐색·체크포인트 경로를 쓴다 (동일 예산 원칙)
 """
 from __future__ import annotations
 
@@ -11,7 +12,7 @@ import hashlib
 import json
 import time
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -22,14 +23,26 @@ from labelbudget.evaluation.budget import budget_info, subsample_train
 from labelbudget.evaluation.metrics import choose_threshold, classification_metrics, regression_metrics
 from labelbudget.featurize.descriptors import DescriptorSelector, compute_descriptors
 from labelbudget.featurize.fingerprints import ecfp4
+from labelbudget.featurize.graph import MolGraph, mol_graph
 from labelbudget.models.gbm import LGBM_SPACE, best_of, make_lgbm, predict, search_trace
+from labelbudget.models.gnn import GNN_SPACE, DMPNNEstimator
 from labelbudget.splits.strategies import make_split
 
-BASELINES: dict[str, tuple[str, ...]] = {
-    "A_ecfp_lgbm": ("ecfp",),
-    "B_desc_lgbm": ("desc",),
-    "AB_ecfp_desc_lgbm": ("ecfp", "desc"),
+
+@dataclass(frozen=True)
+class ModelSpec:
+    features: tuple[str, ...]
+    space: dict
+    kind: str  # lgbm | gnn
+
+
+MODELS: dict[str, ModelSpec] = {
+    "A_ecfp_lgbm": ModelSpec(("ecfp",), LGBM_SPACE, "lgbm"),
+    "B_desc_lgbm": ModelSpec(("desc",), LGBM_SPACE, "lgbm"),
+    "AB_ecfp_desc_lgbm": ModelSpec(("ecfp", "desc"), LGBM_SPACE, "lgbm"),
+    "C_dmpnn": ModelSpec(("graph",), GNN_SPACE, "gnn"),
 }
+BASELINES: dict[str, tuple[str, ...]] = {k: v.features for k, v in MODELS.items() if v.kind == "lgbm"}
 VALID_POLICIES = ("full", "proportional")
 KEY_COLS = ["dataset", "target_task", "model", "split_strategy", "split_seed", "n_labels", "valid_policy"]
 
@@ -42,6 +55,14 @@ def config_hash(obj) -> str:
 class FeatureStore:
     ecfp: np.ndarray
     desc: pd.DataFrame
+    smiles: list[str] = field(default_factory=list)
+    _graphs: list[MolGraph] | None = None
+
+    @property
+    def graphs(self) -> list[MolGraph]:
+        if self._graphs is None:
+            self._graphs = [mol_graph(s) for s in self.smiles]
+        return self._graphs
 
     @classmethod
     def build(cls, df: pd.DataFrame, cache: Path | None = None) -> FeatureStore:
@@ -55,10 +76,12 @@ class FeatureStore:
             if cache is not None:
                 cache.parent.mkdir(parents=True, exist_ok=True)
                 desc.assign(inchikey=df.inchikey.to_numpy()).to_csv(cache, index=False)
-        return cls(ecfp=ecfp4(df.smiles.tolist()), desc=desc)
+        return cls(ecfp=ecfp4(df.smiles.tolist()), desc=desc, smiles=df.smiles.tolist())
 
     def matrices(self, kinds: Sequence[str], tr, *others) -> tuple[list[np.ndarray], dict]:
-        """학습 인덱스 tr로 서술자 컬럼을 고정하고 [X_tr, *X_others]를 만든다."""
+        """학습 인덱스 tr로 서술자 컬럼을 고정하고 [X_tr, *X_others]를 만든다. graph는 MolGraph 목록."""
+        if "graph" in kinds:
+            return [[self.graphs[i] for i in idx] for idx in (tr, *others)], {"graph": "chemprop_v2_featurizer"}
         parts, info = [[] for _ in range(1 + len(others))], {}
         if "desc" in kinds:
             sel = DescriptorSelector().fit(self.desc.iloc[tr])
@@ -111,6 +134,7 @@ def run_grid(
     frac_valid: float = 0.1,
     frac_test: float = 0.1,
     n_jobs: int = 1,
+    gnn_opts: dict | None = None,
     hash_extra: dict | None = None,
     log: Callable[[str], None] = print,
 ) -> pd.DataFrame:
@@ -119,14 +143,14 @@ def run_grid(
     y_all = df.label.to_numpy()
     keys = df.inchikey.to_numpy()
     checkpoints = sorted({k for k in (trial_checkpoints or []) if k < n_trials} | {n_trials})
-    chash = config_hash({"n_trials": n_trials, "checkpoints": checkpoints, "space": LGBM_SPACE,
-                         "frac": [frac_train, frac_valid, frac_test], "offset": subsample_seed_offset,
-                         **(hash_extra or {})})
+    gnn_opts = gnn_opts or {}
+
+    def chash(spec: ModelSpec) -> str:
+        extra = {**(hash_extra or {}), **({"gnn": gnn_opts} if spec.kind == "gnn" else {})}
+        return config_hash({"n_trials": n_trials, "checkpoints": checkpoints, "space": spec.space,
+                            "frac": [frac_train, frac_valid, frac_test], "offset": subsample_seed_offset, **extra})
     out_path.parent.mkdir(parents=True, exist_ok=True)
     done = _done_keys(out_path)
-    def model_fn(params, seed):
-        return make_lgbm(task, params, seed, n_jobs=n_jobs)
-
     for strategy in strategies:
         for split_seed in split_seeds:
             split = make_split(df, strategy=strategy, seed=split_seed,
@@ -150,8 +174,15 @@ def run_grid(
                     if _key(base) in done:
                         continue
                     t0 = time.time()
-                    (X_tr, X_va, X_te), finfo = features.matrices(BASELINES[model], tr, va, te)
-                    trace = search_trace(model_fn, LGBM_SPACE, X_tr, y_all[tr], X_va, y_all[va],
+                    spec = MODELS[model]
+                    (X_tr, X_va, X_te), finfo = features.matrices(spec.features, tr, va, te)
+                    if spec.kind == "lgbm":
+                        def model_fn(params, seed):
+                            return make_lgbm(task, params, seed, n_jobs=n_jobs)
+                    else:
+                        def model_fn(params, seed, X_va=X_va, y_va=y_all[va]):
+                            return DMPNNEstimator(task, params, seed, valid=(X_va, y_va), **gnn_opts)
+                    trace = search_trace(model_fn, spec.space, X_tr, y_all[tr], X_va, y_all[va],
                                          n_trials=n_trials, seed=sub_seed, task=task)
                     rows, evaluated = [], {}
                     for k in checkpoints:
@@ -175,7 +206,7 @@ def run_grid(
                             "hp_n_trials": k, "hp_selected": pkey,
                             "hp_valid_score": val_score, "features": json.dumps(finfo, sort_keys=True),
                             "leakage_exact": lk["exact_overlap"], "leakage_skeleton": lk["skeleton_overlap"],
-                            "config_hash": chash,
+                            "config_hash": chash(spec),
                         }
                         rows += [{**common, "metric_name": m, "metric_value": v} for m, v in metrics.items()
                                  if isinstance(v, (int, float)) and not isinstance(v, bool)]

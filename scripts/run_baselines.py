@@ -9,7 +9,7 @@ from pathlib import Path
 import pandas as pd
 import yaml
 
-from labelbudget.evaluation.runner import BASELINES, VALID_POLICIES, FeatureStore, run_grid
+from labelbudget.evaluation.runner import BASELINES, MODELS, VALID_POLICIES, FeatureStore, run_grid
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -22,7 +22,8 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--dataset", required=True, help="data/processed/<이름>.csv 의 이름 (예: aqsoldb, tox21_SR-ARE)")
     p.add_argument("--config", type=Path, default=ROOT / "configs" / "default.yaml")
-    p.add_argument("--models", nargs="+", choices=list(BASELINES), default=list(BASELINES))
+    p.add_argument("--models", nargs="+", choices=list(MODELS), default=list(BASELINES),
+                   help="기본은 LightGBM 베이스라인 A·B. GNN은 C_dmpnn")
     p.add_argument("--strategies", nargs="+")
     p.add_argument("--seeds", nargs="+", type=int)
     p.add_argument("--budgets", nargs="+", type=_budget, help="정수 또는 full")
@@ -45,7 +46,8 @@ def main() -> int:
         args.budgets = args.budgets or conf["sensitivity"]["budgets"][task]
     else:
         valid_policy = args.valid_policy or conf["hp_search"].get("valid_policy", "full")
-    out = args.out or ROOT / "reports" / "results" / f"{args.dataset}_baselines_{valid_policy}.csv"
+    group = "gnn" if any(MODELS[m].kind == "gnn" for m in args.models) else "baselines"
+    out = args.out or ROOT / "reports" / "results" / f"{args.dataset}_{group}_{valid_policy}.csv"
 
     features = FeatureStore.build(df, cache=ROOT / "data" / "processed" / f"{args.dataset}_descriptors.csv")
     run_grid(
@@ -67,6 +69,7 @@ def main() -> int:
         frac_valid=conf["splits"]["frac_valid"],
         frac_test=conf["splits"]["frac_test"],
         n_jobs=args.n_jobs,
+        gnn_opts=conf.get("gnn"),
     )
     print(f"→ {out}")
     return 0

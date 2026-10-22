@@ -1,0 +1,14 @@
+# chemprop 등가성 비교 전용 환경 (스펙 04 결정 G2)
+# chemprop 2.3.1은 RDKit을 2026.03으로 내리므로 본 환경(labelbudget)과 분리한다.
+# conda env create -f environment-equiv.yml
+# pip install --no-deps -e .   ← 프로젝트 코드만 연결 (RDKit 버전 고정 회피)
+# pytest tests/test_mpnn_equivalence.py
+name: labelbudget-equiv
+channels:
+  - conda-forge
+dependencies:
+  - python=3.13
+  - pip
+  - pip:
+      - chemprop==2.3.1
+      - pytest>=8.0

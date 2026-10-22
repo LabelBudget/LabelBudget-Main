@@ -6,6 +6,7 @@ pandas>=2.2
 numpy>=2.0
 pyyaml>=6.0
 pytest>=8.0
-# 4주차 이후
-# torch>=2.4
-# torch-geometric>=2.6
+# 4주차 이후 (비교군 C·D)
+torch==2.14.1
+torch-geometric==2.8.1
+# chemprop은 별도 환경 — environment-equiv.yml

@@ -29,7 +29,12 @@ SELECTION_METRIC = {"regression": ("rmse", False), "classification": ("auprc", T
 
 def sample_params(space: dict[str, tuple], rng: np.random.Generator) -> dict[str, Any]:
     out = {}
-    for name, (kind, lo, hi) in space.items():
+    for name, spec in space.items():
+        kind = spec[0]
+        if kind == "choice":  # ("choice", 후보1, 후보2, ...)
+            out[name] = spec[1:][int(rng.integers(len(spec) - 1))]
+            continue
+        _, lo, hi = spec
         if kind == "float":
             out[name] = float(rng.uniform(lo, hi))
         elif kind == "log":

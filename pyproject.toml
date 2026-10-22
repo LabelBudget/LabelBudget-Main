@@ -20,6 +20,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+# 비교군 C·D (스펙 04). 2026-10-22 설치 확인 버전으로 고정
+gnn = ["torch==2.14.1", "torch-geometric==2.8.1"]
+# chemprop 등가성 비교 전용. RDKit을 2026.03으로 내리므로 별도 환경(environment-equiv.yml)에만 설치
+equiv = ["chemprop==2.3.1"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

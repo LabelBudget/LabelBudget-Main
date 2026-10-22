@@ -7,4 +7,4 @@ dependencies:
   - llvm-openmp          # macOS에서 LightGBM pip 휠이 libomp.dylib를 요구한다
   - pip
   - pip:
-      - -e ".[dev]"
+      - -e ".[dev,gnn]"
