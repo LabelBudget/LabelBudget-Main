@@ -34,6 +34,8 @@ standardize:                            # §3.3
   max_mol_weight: 1000.0
 
 splits:                                 # §6
+  # 주 분석: scaffold_random (분할 시드마다 test가 바뀜)
+  # 참고점: scaffold (결정론적 → test 고정, 서브샘플 시드만 변함. 문헌 비교용) / random (낙관적 상한)
   strategies: [random, scaffold, scaffold_random]
   frac_train: 0.8
   frac_valid: 0.1
@@ -45,8 +47,16 @@ budgets:                                # §10. null = 전체
   min_positive: 20
 
 seeds:
-  n_split_seeds: 10
-  n_subsample_seeds: 10                 # 분할 시드와 분리
+  split_seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  subsample_seed_offset: 1000           # 분할 시드 k ↔ 서브샘플 시드 k+1000 (1:1 대응, 값은 분리)
 
 hp_search:
-  n_trials: null                        # 미정. 모든 모델 동일 값 (§7.3)
+  n_trials: 20                          # 모든 모델 동일 (§7.3). 실제 사용 값은 GNN 비용 확인 후 체크포인트 중 선택
+  trial_checkpoints: [5, 10, 20]        # 한 번 탐색으로 앞 k회 최고 모델을 각각 기록 (hp_n_trials 컬럼)
+  valid_policy: full                    # 주 분석: valid 고정 (~10%). 리포트에 "학습 라벨 N + valid" 명기
+
+sensitivity:                            # 민감도 분석: valid도 예산 비율대로 축소 (저예산 구간만)
+  valid_policy: proportional
+  budgets:
+    regression: [100, 300]
+    classification: [300]

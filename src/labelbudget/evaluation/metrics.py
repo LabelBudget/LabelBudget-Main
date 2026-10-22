@@ -21,12 +21,13 @@ def regression_metrics(y_true, y_pred) -> dict:
     y, p = np.asarray(y_true, float), np.asarray(y_pred, float)
     resid = y - p
     ss_tot = float(((y - y.mean()) ** 2).sum())
+    varied = np.ptp(y) > 0 and np.ptp(p) > 0  # 상수 예측이면 상관계수는 정의되지 않는다
     return {
         "rmse": float(np.sqrt((resid ** 2).mean())),
         "mae": float(np.abs(resid).mean()),
         "r2": float(1 - (resid ** 2).sum() / ss_tot) if ss_tot > 0 else float("nan"),
-        "spearman": float(stats.spearmanr(y, p).statistic),
-        "pearson": float(stats.pearsonr(y, p).statistic),
+        "spearman": float(stats.spearmanr(y, p).statistic) if varied else float("nan"),
+        "pearson": float(stats.pearsonr(y, p).statistic) if varied else float("nan"),
         "n": int(len(y)),
     }
 
