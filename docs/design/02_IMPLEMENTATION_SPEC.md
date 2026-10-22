@@ -700,3 +700,6 @@ python scripts/audit_dataset.py --dataset tox21 --task SR-ARE --out docs/audit_t
 | 2026-10-22 | ESOL `predicted` 컬럼 사용 금지 명시 | §1.3 — 다른 모델의 출력 |
 | 2026-10-22 | 노이즈 하한 0.301 logS 기재 | `03` §6 |
 | 2026-10-22 | `scripts/audit_dataset.py` 신설 | §13 |
+| 2026-10-22 | `stereo=keep`일 때 토토머 정규화의 입체 제거(`tautomerRemoveSp3Stereo`/`BondStereo`)를 끈다 | RDKit 기본값이 L/D-알라닌을 병합함을 실측 |
+| 2026-10-22 | 토토머 정규화 유지 + 원장에 `n_duplicates_incoming`, `n_duplicates_created_by_tautomer` 추가, 데이터 카드 §5에서 발생 단계별 집계 | 토토머 포함 시 AqSolDB 중복 6→26그룹 (`03` 상단 주석) |
+| 2026-10-22 | 03 감사 수치는 토토머 정규화 없이 측정된 값임을 명기 | 재측정 |
