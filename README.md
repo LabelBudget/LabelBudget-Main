@@ -30,8 +30,11 @@
 ## 설치
 
 ```bash
-pip install -e ".[dev]"
+conda env create -f environment.yml
+conda activate labelbudget
 ```
+
+conda 없이 설치하려면 `pip install -e ".[dev]"`. macOS에서는 LightGBM이 `libomp`를 요구하므로 `brew install libomp`가 필요하다.
 
 AqSolDB는 자동 다운로드가 불가하다. `curated-solubility-dataset.csv`를 `data/raw/aqsoldb.csv`로 배치한다 (출처: `docs/design/02_IMPLEMENTATION_SPEC.md` §1.2).
 
