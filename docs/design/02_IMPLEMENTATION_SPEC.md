@@ -210,7 +210,7 @@ labelbudget/
 | 과제 | 다단편(염) 처리 | 근거 |
 |---|---|---|
 | **용해도 (회귀)** | **`strip_salts=False`. 다단편 입력을 거부한다** | 짝이온이 용해도를 결정한다. 염을 벗기면 화학적으로 다른 물질이 하나로 병합되어 라벨이 최대 9.48 logS까지 충돌한다 |
-| 독성 (분류) | `strip_salts=True` 허용 | 활성은 보통 모분자가 결정하므로 염 제거가 통례. **단 Tox21에도 동일 감사를 돌려 확인할 것** |
+| **독성 (분류)** | **`strip_salts=False`. 다단편 입력을 거부한다** (2026-10-22 감사로 변경) | SR-ARE는 금속이 활성을 낸다. 염 제거 시 유기주석·메탈로센·Fe-EDTA가 금속 없는 모분자와 병합되어 라벨 불일치 16그룹 (B는 3그룹). 비용은 47분자(5,561→5,514), 양성률 15.8% 유지. `docs/audit_tox21.md` |
 
 AqSolDB 9,982건 실측 비교:
 
@@ -681,7 +681,7 @@ python scripts/audit_dataset.py --dataset tox21 --task SR-ARE --out docs/audit_t
 7. `scripts/curate_dataset.py` — CLI (`--dataset aqsoldb`, `--dataset tox21 --task SR-ARE`)
 8. `scripts/audit_dataset.py` — §13
 9. AqSolDB / ESOL / Tox21(SR-ARE) 큐레이션 실행 → `docs/data_card_*.md` 커밋
-10. **Tox21 감사 실행 → 염 처리 정책 결정 및 스펙 반영**
+10. ~~Tox21 감사 실행 → 염 처리 정책 결정 및 스펙 반영~~ → 완료: 정책 B (§3.2)
 
 2주차는 §6·§8·§9·§10, 3주차는 §7·§11로 이어진다.
 
@@ -703,4 +703,5 @@ python scripts/audit_dataset.py --dataset tox21 --task SR-ARE --out docs/audit_t
 | 2026-10-22 | `stereo=keep`일 때 토토머 정규화의 입체 제거(`tautomerRemoveSp3Stereo`/`BondStereo`)를 끈다 | RDKit 기본값이 L/D-알라닌을 병합함을 실측 |
 | 2026-10-22 | 토토머 정규화 유지 + 원장에 `n_duplicates_incoming`, `n_duplicates_created_by_tautomer` 추가, 데이터 카드 §5에서 발생 단계별 집계 | 토토머 포함 시 AqSolDB 중복 6→26그룹 (`03` 상단 주석) |
 | 2026-10-22 | 03 감사 수치는 토토머 정규화 없이 측정된 값임을 명기 | 재측정 |
+| 2026-10-22 | **Tox21도 `strip_salts=False`**. 모든 과제에서 염을 벗기지 않는다 | `docs/audit_tox21.md` — 염 제거 시 금속 화합물이 모분자와 병합, 라벨 불일치 16 vs 3그룹 |
 | 2026-10-22 | ESOL 충돌 규칙 MEDIAN → **DROP** (최종 1,110 → 1,109) | 입체 정보 없는 SMILES에서 만니톨/소르비톨 병합, 중앙값이 실측에 없는 라벨 생성 |

@@ -20,6 +20,7 @@ datasets:
     smiles_col: smiles
     target_task: SR-ARE                 # §1.4
     drop_cols: ["Unnamed: 0", mol_id]
+    # strip_salts는 전역 기본값(false)을 따른다 — 염 제거 시 금속 화합물이 모분자와 병합 (docs/audit_tox21.md)
     conflict_rule: majority
 
 standardize:                            # §3.3
