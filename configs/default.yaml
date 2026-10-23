@@ -60,6 +60,7 @@ gnn:                                    # 비교군 C·D (스펙 04)
   patience: 10
   device: cpu                           # 결정 G3 (2026-10-23): CPU + 결정론 모드. MPS는 재현 불가 (docs/bench_gnn.md)
   deterministic: true
+  threads: 1                            # 결정 G5 (2026-10-23): 프로세스 6개 × 1스레드 병렬. 스레드 수가 바뀌면 결과도 바뀐다
 
 sensitivity:                            # 민감도 분석: valid도 예산 비율대로 축소 (저예산 구간만)
   valid_policy: proportional

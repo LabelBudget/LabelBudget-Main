@@ -20,20 +20,27 @@ from labelbudget.models.gnn_space import GNN_SPACE  # noqa: F401  (기존 import
 
 
 @contextmanager
-def _deterministic(on: bool) -> Iterator[None]:
-    """멀티스레드 index_add_의 누적 순서를 고정한다. 전역 설정이라 끝나면 이전 값으로 되돌린다."""
-    prev = torch.are_deterministic_algorithms_enabled()
-    torch.use_deterministic_algorithms(on or prev)
+def _runtime(deterministic: bool, threads: int | None) -> Iterator[None]:
+    """결정론 모드와 스레드 수를 학습·예측 동안만 건다. 둘 다 전역 설정이라 끝나면 이전 값으로 되돌린다.
+
+    결정론 모드는 스레드 수가 같을 때만 같은 결과를 낸다 (1~3스레드와 4~8스레드의 결과가 서로 다르다,
+    docs/bench_gnn.md). 그래서 스레드 수도 설정값으로 고정한다.
+    """
+    prev_det, prev_threads = torch.are_deterministic_algorithms_enabled(), torch.get_num_threads()
+    torch.use_deterministic_algorithms(deterministic or prev_det)
+    if threads:
+        torch.set_num_threads(threads)
     try:
         yield
     finally:
-        torch.use_deterministic_algorithms(prev)
+        torch.use_deterministic_algorithms(prev_det)
+        torch.set_num_threads(prev_threads)
 
 
 class DMPNNEstimator:
     def __init__(self, task: str, params: dict, seed: int, *, valid: tuple[Sequence[MolGraph], np.ndarray],
                  max_epochs: int = 100, patience: int = 10, device: str = "cpu", deterministic: bool = True,
-                 eval_batch: int = 512):
+                 threads: int | None = None, eval_batch: int = 512):
         # 결정 G3 (2026-10-23): CPU + 결정론 모드. 끄면 같은 시드에서도 조기 종료 시점이 갈려 결과가 달라진다.
         # MPS는 index_add_ 역전파에 결정론 구현이 없어 deterministic=True와 함께 쓸 수 없다 (docs/bench_gnn.md)
         if deterministic and device != "cpu":
@@ -41,7 +48,7 @@ class DMPNNEstimator:
         self.task, self.params, self.seed = task, dict(params), seed
         self.X_va, self.y_va = valid
         self.max_epochs, self.patience, self.device, self.eval_batch = max_epochs, patience, device, eval_batch
-        self.deterministic = deterministic
+        self.deterministic, self.threads = deterministic, threads
         self.history: list[float] = []
         self.best_epoch = -1
 
@@ -53,7 +60,7 @@ class DMPNNEstimator:
     def _raw(self, X: Sequence[MolGraph]) -> np.ndarray:
         self.model.eval()
         out = []
-        with torch.no_grad(), _deterministic(self.deterministic):
+        with torch.no_grad(), _runtime(self.deterministic, self.threads):
             for i in range(0, len(X), self.eval_batch):
                 out.append(self.model(batch_graphs(X[i:i + self.eval_batch]).to(self.device)).cpu().numpy())
         return np.concatenate(out) if out else np.zeros(0)
@@ -66,7 +73,7 @@ class DMPNNEstimator:
         return -np.inf if np.isnan(s) else s
 
     def fit(self, X: Sequence[MolGraph], y) -> DMPNNEstimator:
-        with _deterministic(self.deterministic):
+        with _runtime(self.deterministic, self.threads):
             return self._fit(X, y)
 
     def _fit(self, X: Sequence[MolGraph], y) -> DMPNNEstimator:

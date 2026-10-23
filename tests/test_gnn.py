@@ -72,8 +72,8 @@ def test_run_grid_with_gnn(toy, tmp_path):
 def test_deterministic_mode_is_scoped_and_cpu_only(toy):
     smiles, y = toy
     G = [mol_graph(s) for s in smiles]
-    before = torch.are_deterministic_algorithms_enabled()
-    DMPNNEstimator("regression", FAST, seed=0, valid=(G[96:], y[96:]), max_epochs=2).fit(G[:96], y[:96])
-    assert torch.are_deterministic_algorithms_enabled() == before  # 전역 설정을 남기지 않는다
+    before = torch.are_deterministic_algorithms_enabled(), torch.get_num_threads()
+    DMPNNEstimator("regression", FAST, seed=0, valid=(G[96:], y[96:]), max_epochs=2, threads=1).fit(G[:96], y[:96])
+    assert (torch.are_deterministic_algorithms_enabled(), torch.get_num_threads()) == before  # 전역 설정을 남기지 않는다
     with pytest.raises(ValueError, match="CPU"):
         DMPNNEstimator("regression", FAST, seed=0, valid=(G, y), device="mps")
