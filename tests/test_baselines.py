@@ -98,6 +98,18 @@ def test_run_grid_trial_checkpoints(toy, tmp_path):
     assert rmse.hp_valid_score[4] <= rmse.hp_valid_score[1]
 
 
+
+def test_run_grid_saved_predictions_reproduce_metrics(toy, tmp_path):
+    res = run_grid(toy, dataset="toy", task="regression", target_task="y", features=FeatureStore.build(toy),
+                   models=["B_desc_lgbm"], strategies=["random"], split_seeds=[0], budgets=[None], n_trials=4,
+                   trial_checkpoints=[1, 2], out_path=tmp_path / "c.csv", pred_dir=tmp_path / "preds",
+                   log=lambda _: None)
+    pr = pd.read_csv(tmp_path / "preds" / "B_desc_lgbm_random_s0_nfull.csv")
+    assert len(pr) == res.n_test.iloc[0] and pr.inchikey.is_unique
+    rmse = res[res.metric_name == "rmse"].set_index("hp_n_trials").metric_value
+    for k in (1, 2, 4):
+        assert np.sqrt(np.mean((pr[f"pred_at_{k}"] - pr.y_true) ** 2)) == pytest.approx(rmse[k], rel=1e-9)
+
 def test_runner_import_loads_neither_torch_nor_lightgbm():
     # 둘은 각자 libomp를 싣는다. torch가 먼저면 LightGBM n_jobs>1 학습이, lightgbm이 먼저면 torch 학습이
     # 세그폴트로 죽는다 (2026-10-23 민감도 분석·GNN 파일럿에서 발생). 실제로 쓰는 경로에서만 로드해야 한다

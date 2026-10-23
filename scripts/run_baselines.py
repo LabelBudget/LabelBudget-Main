@@ -33,6 +33,7 @@ def main() -> int:
                    help="민감도 분석: configs sensitivity의 valid 정책·예산으로 실행")
     p.add_argument("--n-jobs", type=int, default=1)
     p.add_argument("--out", type=Path)
+    p.add_argument("--save-preds", type=Path, help="조합별 분자 단위 test 예측을 저장할 디렉터리")
     args = p.parse_args()
 
     conf = yaml.safe_load(args.config.read_text())
@@ -70,6 +71,7 @@ def main() -> int:
         frac_test=conf["splits"]["frac_test"],
         n_jobs=args.n_jobs,
         gnn_opts=conf.get("gnn"),
+        pred_dir=args.save_preds,
     )
     print(f"→ {out}")
     return 0

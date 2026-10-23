@@ -35,6 +35,7 @@ def main() -> int:
     p.add_argument("--budgets", nargs="+", help="정수 또는 full")
     p.add_argument("--workers", type=int, default=6)
     p.add_argument("--out", type=Path)
+    p.add_argument("--save-preds", type=Path, help="run_baselines.py --save-preds로 넘긴다")
     args = p.parse_args()
 
     conf = yaml.safe_load(args.config.read_text())
@@ -58,6 +59,8 @@ def main() -> int:
         cmd = [sys.executable, str(ROOT / "scripts" / "run_baselines.py"), "--dataset", args.dataset,
                "--config", str(args.config), "--models", *args.models, "--strategies", s, "--seeds", str(k),
                "--budgets", b, "--n-jobs", "1", "--out", str(stem.with_suffix(".csv"))]
+        if args.save_preds:
+            cmd += ["--save-preds", str(args.save_preds)]
         t0 = time.time()
         with open(stem.with_suffix(".log"), "a") as log:
             rc = subprocess.run(cmd, stdout=log, stderr=subprocess.STDOUT, cwd=ROOT).returncode

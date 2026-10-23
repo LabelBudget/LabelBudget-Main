@@ -19,4 +19,4 @@ venv/
 .DS_Store
 
 # 병렬 실행 중간 산출물 (run_parallel.py가 합친 CSV만 커밋)
-reports/results/parts/
+reports/results/**/parts/

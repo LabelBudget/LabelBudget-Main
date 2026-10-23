@@ -5,6 +5,7 @@
 - valid_policy: full = valid 고정 / proportional = valid도 train:valid 비율대로 예산에 맞춰 줄인다
 - trial_checkpoints: n_trials회 탐색 한 번으로 앞 k회 최고 모델을 각각 평가해 hp_n_trials=k 행으로 남긴다
 - LightGBM(A·B)과 D-MPNN(C)이 같은 탐색·체크포인트 경로를 쓴다 (동일 예산 원칙)
+- pred_dir: 조합마다 분자별 test 예측(체크포인트별 열)을 CSV로 남긴다. 지표 계산에는 영향이 없다
 """
 from __future__ import annotations
 
@@ -141,6 +142,7 @@ def run_grid(
     n_jobs: int = 1,
     gnn_opts: dict | None = None,
     hash_extra: dict | None = None,
+    pred_dir: Path | None = None,
     log: Callable[[str], None] = print,
 ) -> pd.DataFrame:
     if valid_policy not in VALID_POLICIES:
@@ -198,19 +200,22 @@ def run_grid(
                             return DMPNNEstimator(task, params, seed, valid=(X_va, y_va), **gnn_opts)
                     trace = search_trace(model_fn, spec.space, X_tr, y_all[tr], X_va, y_all[va],
                                          n_trials=n_trials, seed=sub_seed, task=task)
-                    rows, evaluated = [], {}
+                    rows, evaluated, preds = [], {}, {}
                     for k in checkpoints:
                         params, val_score = best_of(trace, k, task)
                         pkey = json.dumps(params, sort_keys=True)
                         if pkey not in evaluated:  # 같은 파라미터가 뽑히면 재학습하지 않는다
                             fitted = model_fn(params, sub_seed).fit(X_tr, y_all[tr])
                             p_te = predict(fitted, X_te, task)
+                            preds[pkey] = p_te
                             if task == "regression":
                                 evaluated[pkey] = regression_metrics(y_all[te], p_te)
                             else:
                                 thr = choose_threshold(y_all[va], predict(fitted, X_va, task))
                                 evaluated[pkey] = classification_metrics(y_all[te], p_te, thr)
                         metrics = evaluated[pkey]
+                        if pred_dir is not None:
+                            preds[k] = preds[pkey]
                         common = {
                             **base,
                             "n_train": len(tr), "n_valid": len(va), "n_test": len(te),
@@ -225,6 +230,11 @@ def run_grid(
                         rows += [{**common, "metric_name": m, "metric_value": v} for m, v in metrics.items()
                                  if isinstance(v, (int, float)) and not isinstance(v, bool)]
                     runtime = round(time.time() - t0, 2)
+                    if pred_dir is not None:
+                        pred_dir.mkdir(parents=True, exist_ok=True)
+                        pd.DataFrame({"inchikey": keys[te], "y_true": y_all[te],
+                                      **{f"pred_at_{k}": preds[k] for k in checkpoints}}).to_csv(
+                            pred_dir / f"{model}_{strategy}_s{split_seed}_n{base['n_labels']}.csv", index=False)
                     pd.DataFrame(rows).assign(runtime_sec=runtime).to_csv(
                         out_path, mode="a", header=not out_path.exists(), index=False)
                     done.add(_key(base))
