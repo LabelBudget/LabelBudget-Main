@@ -17,6 +17,13 @@
   남는 차이는 가중치 초기화·셔플 난수, Lightning 학습 루프뿐이다 → 직접 구현의 학습 과정 검증
 - control: 직접 구현 C를 같은 HP로, 초기화·셔플 시드만 바꿔(+CONTROL_SEED_OFFSET) 재학습.
   C ↔ control 차이가 "초기화 잡음 바닥"이다. C ↔ matched 차이가 이보다 크지 않으면 구현 차이라고 말할 근거가 없다
+- abl_*: 학습 규칙 원인 진단. chemprop 기본값에서 C의 학습 규칙을 하나씩(또는 전부) 바꾼다. 3000·전체 예산에서
+  기본값이 C보다 나았던 원인이 학습 규칙인지 HP 선택인지 가른다 (04 §6.2, scripts/analyze_chemprop_ablation.py)
+
+  python scripts/reproduce_chemprop.py run --dataset aqsoldb --modes abl_constlr abl_mean abl_patience abl_allrules \
+      --budgets 3000 full
+  python scripts/reproduce_chemprop.py collect --dataset aqsoldb --modes abl_constlr abl_mean abl_patience abl_allrules \
+      --out aqsoldb_chemprop_ablation.csv
 """
 import argparse
 import json
@@ -31,9 +38,17 @@ import pandas as pd
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-MODES = ("default", "matched", "control")
-MODEL_NAME = {"default": "C_chemprop_default", "matched": "C_chemprop_matched", "control": "C_dmpnn_reinit"}
-CHEMPROP_MODES = ("default", "matched")
+# 진단 모드: 기본값에 C의 학습 규칙을 덧씌운다. 고정 lr은 Noam의 최고값 1e-3에 맞춘다.
+# 정지 규칙은 --epochs를 50으로 둔다(Noam 감쇠 길이가 에폭 수에 묶여 있어 100으로 바꾸면 스케줄도 바뀐다)
+_CONST_LR = ["--warmup-epochs", "0", "--init-lr", "1e-3", "--max-lr", "1e-3", "--final-lr", "1e-3"]
+ABLATIONS = {"abl_constlr": _CONST_LR, "abl_mean": ["--aggregation", "mean"],
+             "abl_patience": ["--patience", "10", "--tracking-metric", "rmse"],
+             "abl_allrules": [*_CONST_LR, "--aggregation", "mean", "--epochs", "100", "--patience", "10",
+                              "--tracking-metric", "rmse"]}
+MODES = ("default", "matched", "control", *ABLATIONS)
+MODEL_NAME = {"default": "C_chemprop_default", "matched": "C_chemprop_matched", "control": "C_dmpnn_reinit",
+              **{m: f"C_chemprop_{m}" for m in ABLATIONS}}
+CHEMPROP_MODES = ("default", "matched", *ABLATIONS)
 CONTROL_SEED_OFFSET = 10_000
 
 
@@ -89,6 +104,8 @@ def export(args) -> int:
 def chemprop_args(mode: str, meta: dict) -> list[str]:
     if mode == "default":
         return []
+    if mode in ABLATIONS:
+        return list(ABLATIONS[mode])
     p, g = meta["c_params"], meta["gnn"]
     lr = str(p["lr"])
     return ["--message-hidden-dim", str(p["d_h"]), "--depth", str(p["depth"]), "--dropout", str(p["dropout"]),
@@ -103,7 +120,8 @@ def run(args) -> int:
     exe = Path(sys.executable).with_name("chemprop")
     if not exe.exists():
         raise SystemExit(f"chemprop 실행 파일이 없다: {exe} — labelbudget-equiv 환경에서 실행할 것")
-    metas = sorted(work.glob("splits/*.meta.json"))
+    metas = [m for m in sorted(work.glob("splits/*.meta.json"))
+             if not args.budgets or json.loads(m.read_text())["n_labels"] in args.budgets]
     jobs = [(m, mode) for m in metas for mode in args.modes if mode in CHEMPROP_MODES]
     jobs.sort(key=lambda j: -_budget_key(json.loads(j[0].read_text())["n_labels"]))
     env = {**os.environ, "OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1"}
@@ -207,7 +225,8 @@ def collect(args) -> int:
             out = work / "runs" / mode / stem
             pr = out / "model_0" / "test_predictions.csv"
             if not pr.exists():
-                print(f"없음: {mode} {stem}")
+                if not (mode in ABLATIONS and meta["n_labels"] not in ("3000", "full")):
+                    print(f"없음: {mode} {stem}")
                 continue
             p = pd.read_csv(pr)
             if p.smiles.tolist() != df.smiles.iloc[te].tolist():  # 예측 순서가 test 인덱스 순서와 같아야 한다
@@ -222,15 +241,16 @@ def collect(args) -> int:
                     "split_seed": meta["split_seed"], "n_labels": meta["n_labels"],
                     "subsample_seed": meta["subsample_seed"], "valid_policy": "full",
                     "n_train": meta["n_train"], "n_valid": meta["n_valid"], "n_test": meta["n_test"],
-                    "hp_n_trials": 0 if mode == "default" else args.n_trials,
-                    "hp_selected": json.dumps("chemprop_default" if mode == "default" else meta["c_params"]),
+                    "hp_n_trials": args.n_trials if mode in ("matched", "control") else 0,
+                    "hp_selected": json.dumps(meta["c_params"] if mode in ("matched", "control")
+                                              else f"chemprop_{mode}"),
                     "epochs_run": epochs_run,
                     "runtime_sec": float((out / "runtime_sec.txt").read_text())}
             rows += [{**base, "metric_name": m, "metric_value": v}
                      for m, v in regression_metrics(df.label.to_numpy()[te], pred).items()]
             pd.DataFrame({"inchikey": df.inchikey.to_numpy()[te], "y_true": df.label.to_numpy()[te],
                           "pred": pred}).to_csv(pred_dir / f"{MODEL_NAME[mode]}_{stem}.csv", index=False)
-    out_csv = ROOT / "reports" / "results" / f"{args.dataset}_chemprop_full.csv"
+    out_csv = ROOT / "reports" / "results" / (args.out or f"{args.dataset}_chemprop_full.csv")
     pd.DataFrame(rows).to_csv(out_csv, index=False)
     print(f"→ {out_csv.relative_to(ROOT)} ({len(rows)}행)\n→ {pred_dir.relative_to(ROOT)}")
     return 0
@@ -247,9 +267,13 @@ def main() -> int:
             s.add_argument("--config", type=Path, default=ROOT / "configs" / "default.yaml")
             s.add_argument("--strategies", nargs="+", default=["scaffold_random"])
         else:
-            s.add_argument("--modes", nargs="+", choices=MODES, default=list(MODES))
+            s.add_argument("--modes", nargs="+", choices=MODES, default=["default", "matched", "control"])
         if name in ("run", "control"):
             s.add_argument("--workers", type=int, default=6)
+        if name == "run":
+            s.add_argument("--budgets", nargs="+", help="이 예산만 실행 (예: 3000 full). 생략하면 전부")
+        if name == "collect":
+            s.add_argument("--out", help="reports/results/ 아래 파일 이름 (기본 <dataset>_chemprop_full.csv)")
     args = p.parse_args()
     return {"export": export, "run": run, "control": control, "collect": collect}[args.cmd](args)
 
