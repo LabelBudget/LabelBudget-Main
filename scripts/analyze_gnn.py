@@ -57,6 +57,40 @@ def boundary_table(gnn: pd.DataFrame, space: dict) -> pd.DataFrame:
     return pd.DataFrame(rows).sort_values("n_labels", key=lambda s: s.map(budget_order))
 
 
+def readout_section(args, c: pd.DataFrame, metric: str, section: int) -> list[str]:
+    """탐색이 valid로 고른 readout의 빈도."""
+    sel = c[(c.metric_name == metric) & (c.hp_n_trials == args.n_trials)]
+    ro = sel.assign(readout=[json.loads(h)["readout"] for h in sel.hp_selected])
+    cnt = ro.groupby("n_labels").readout.apply(lambda s: (s == "norm").sum())
+    budgets = sorted(cnt.index, key=budget_order)
+    md = [f"## {section}. 선택된 readout (탐색 {args.n_trials}회, valid로 선택)", "",
+          "| 라벨 수 | norm 선택 시드 |", "|---:|---:|"]
+    md += [f"| {n} | {int(cnt[n])}/{int((ro.n_labels == n).sum())} |" for n in budgets]
+    md.append("")
+    return md
+
+
+def auroc_section(d: pd.DataFrame, cm: str, section: int) -> list[str]:
+    """분류 보조: AUROC 평균과 C − B 시드 쌍 검정. AUPRC 무작위 기준선(test 양성률)도 함께 적는다."""
+    r = d[d.metric_name == "auroc"].pivot_table(index=["n_labels", "split_seed"], columns="model",
+                                                 values="metric_value")
+    rate = d[(d.metric_name == "auprc") & (d.model == cm)].assign(rate=lambda x: x.n_test_positive / x.n_test)
+    rate = rate.groupby("n_labels").rate.mean()
+    budgets = sorted(r.index.get_level_values(0).unique(), key=budget_order)
+    blk = [paired_wilcoxon(r.loc[n][cm], r.loc[n]["B_desc_lgbm"]) for n in budgets]
+    for x, ph in zip(blk, holm([x["p_value"] for x in blk])):
+        x["p_holm"] = ph
+    cols = [m for m in LABELS if m in r.columns]
+    md = [f"## {section}. 분류 보조: AUROC와 양성률", "",
+          "AUPRC의 무작위 기준선은 test 양성률이다. AUROC는 불균형에서 낙관적이므로 보조로만 읽는다.", "",
+          "| 라벨 수 | test 양성률 | " + " | ".join(f"AUROC {LABELS[m]}" for m in cols)
+          + " | C − B 중앙값 | p (Holm) |", "|---:|---:|" + "---:|" * len(cols) + "---:|---:|"]
+    md += [f"| {n} | {rate[n]:.1%} | " + " | ".join(fmt(r.loc[n][m].mean()) for m in cols)
+           + f" | {fmt(x['median_diff'])} | {fmt(x['p_holm'], 4)} |" for n, x in zip(budgets, blk)]
+    md.append("")
+    return md
+
+
 def versus_v1(args, c: pd.DataFrame, cm: str) -> list[str]:
     """새 C를 기존 C(C_dmpnn)·chemprop 기본값과 시드 쌍으로 비교하고, 선택된 readout 빈도를 적는다."""
     res = ROOT / "reports" / "results"
@@ -84,13 +118,7 @@ def versus_v1(args, c: pd.DataFrame, cm: str) -> list[str]:
                   f"{fmt(x.C_chemprop_default.mean())} | {fmt(b['median_diff'])} | {fmt(b['p_holm'], 4)} |")
     md.append("")
     if "readout" in MODELS[cm].space:
-        sel = c[(c.metric_name == "rmse") & (c.hp_n_trials == args.n_trials)]
-        ro = sel.assign(readout=[json.loads(h)["readout"] for h in sel.hp_selected])
-        cnt = ro.groupby("n_labels").readout.apply(lambda s: (s == "norm").sum())
-        md += [f"## 8. 선택된 readout (탐색 {args.n_trials}회, valid로 선택)", "",
-               "| 라벨 수 | norm 선택 시드 |", "|---:|---:|"]
-        md += [f"| {n} | {int(cnt[n])}/{int((ro.n_labels == n).sum())} |" for n in budgets]
-        md.append("")
+        md += readout_section(args, c, "rmse", 8)
     return md
 
 
@@ -164,14 +192,18 @@ def main() -> int:
     ck = ck.reindex(sorted(ck.index, key=budget_order))
     ks = sorted(c.hp_n_trials.unique())
     md += ["## 4. C의 탐색 횟수 체크포인트 효과", "",
-           "평균은 시드 하나의 실패에 끌려간다(아래 5회 full 참고). 중앙값을 함께 적는다.", "",
+           # "5회 full" 사례는 AqSolDB 붕소 분자 (LIMITATIONS)
+           "평균은 시드 하나의 실패에 끌려간다" + ("(아래 5회 full 참고)" if args.dataset == "aqsoldb" else "")
+           + ". 중앙값을 함께 적는다.", "",
            "| 라벨 수 | " + " | ".join(f"{k}회 평균" for k in ks) + " | " + " | ".join(f"{k}회 중앙값" for k in ks) + " |",
            "|---:|" + "---:|" * (2 * len(ks))]
     md += [f"| {n} | " + " | ".join(fmt(ck.loc[n, ("mean", k)]) for k in ks) + " | "
            + " | ".join(fmt(ck.loc[n, ("median", k)]) for k in ks) + " |" for n in ck.index]
-    worst = c.assign(gap=c.metric_value - c.hp_valid_score).nlargest(3, "gap")
+    # test가 valid보다 나쁜 쪽으로 가장 크게 벗어난 행 (분류는 AUPRC라 부호가 반대)
+    gap = c.hp_valid_score - c.metric_value if higher else c.metric_value - c.hp_valid_score
+    worst = c.assign(gap=gap).nlargest(3, "gap")
     md += ["", "valid와 test 차이가 가장 큰 C 행 (선택은 valid로만 했으므로 test 실패는 그대로 남긴다):", "",
-           "| 시드 | 라벨 수 | 탐색 | valid RMSE | test RMSE |", "|---:|---:|---:|---:|---:|"]
+           f"| 시드 | 라벨 수 | 탐색 | valid {metric.upper()} | test {metric.upper()} |", "|---:|---:|---:|---:|---:|"]
     md += [f"| {x.split_seed} | {x.n_labels} | {x.hp_n_trials} | {fmt(x.hp_valid_score)} | {fmt(x.metric_value)} |"
            for x in worst.itertuples()]
     md.append("")
@@ -206,8 +238,14 @@ def main() -> int:
         md += [f"| {n} | {x['mean'] / 60:.1f} | {x['max'] / 60:.1f} | {x['sum'] / 3600:.1f} |" for n, x in rt.iterrows()]
     md.append("")
 
-    if cm != "C_dmpnn":
+    # 기존 C·chemprop 결과가 있는 데이터셋(AqSolDB)만 비교한다. 처음부터 v2로 돌린 데이터셋은 readout 빈도만 적는다
+    has_v1 = (res_dir / f"{args.dataset}_gnn_full.csv").exists() and (res_dir / f"{args.dataset}_chemprop_full.csv").exists()
+    if cm != "C_dmpnn" and has_v1:
         md += versus_v1(args, c, cm)
+    elif "readout" in space:
+        md += readout_section(args, c, metric, 7)
+    if task == "classification":
+        md += auroc_section(allk[allk.hp_n_trials == args.n_trials], cm, 8 if "readout" in space and not has_v1 else 7)
 
     out = ROOT / "reports" / f"gnn{tag}_{args.dataset}.md"
     out.write_text("\n".join(md))
