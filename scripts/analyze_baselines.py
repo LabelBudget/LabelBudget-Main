@@ -110,6 +110,10 @@ def plot_curves(t: pd.DataFrame, metric: str, out: Path, title: str) -> None:
             ends.append((model, x[-1], y[-1]))
         _direct_labels(ax, ends)
         ax.set_xscale("log")
+        # 로그축 보조 눈금 라벨(2×10², 3×10² …)이 예산 사이에서 겹치므로 실제 학습 크기에만 눈금을 단다
+        ticks = sorted({int(round(n)) for n in sub.n_train})
+        ax.set_xticks(ticks, [f"{n:,}" for n in ticks])
+        ax.xaxis.set_minor_formatter(plt.NullFormatter())
         ax.set_title(SPLIT_LABEL[split], fontsize=10, color=INK, loc="left")
         ax.set_xlabel("학습 라벨 수 (로그)", fontsize=9, color=INK2)
         ax.grid(True, color=GRID, linewidth=0.8)
@@ -128,6 +132,35 @@ def plot_curves(t: pd.DataFrame, metric: str, out: Path, title: str) -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out, dpi=160, bbox_inches="tight", facecolor=SURFACE)
     plt.close(fig)
+
+
+def classification_extras(d: pd.DataFrame) -> list[str]:
+    """분류 전용 (02 §8): test 양성 수와 20개 미만 플래그, AUROC를 양성률(=무작위 AUPRC)과 같은 표에."""
+    r = d[d.metric_name == "auroc"]
+    md = ["## 5. 분류 보조: 양성 수와 AUROC", "",
+          "AUPRC의 무작위 기준선은 test 양성률이다. AUROC는 불균형에서 낙관적이므로 양성률과 함께 읽는다. "
+          "test 양성 20개 미만 조합은 신뢰할 수 없다(02 §8).", ""]
+    for split in SPLITS:
+        s = r[r.split_strategy == split]
+        if s.empty:
+            continue
+        one = s.drop_duplicates(["split_seed", "n_labels"])  # 양성 수는 모델과 무관
+        pos = one.groupby("n_labels").agg(
+            test_pos_min=("n_test_positive", "min"), test_pos_max=("n_test_positive", "max"),
+            train_pos_min=("n_train_positive", "min"), train_pos_max=("n_train_positive", "max"),
+            rate=("n_test_positive", "sum"), n_test=("n_test", "sum"), flagged=("low_positive_flag", "sum"))
+        auroc = s.pivot_table(index="n_labels", columns="model", values="metric_value", aggfunc="mean")
+        cols = [m for m in COLORS if m in auroc.columns]
+        md += [f"### {SPLIT_LABEL[split]}", "",
+               "| 라벨 수 | test 양성 | train 양성 | 양성 20개 미만 | test 양성률 | "
+               + " | ".join(f"AUROC {LABELS[c]}" for c in cols) + " |", "|---:|---:|---:|---:|---:|" + "---:|" * len(cols)]
+        for n in sorted(pos.index, key=budget_order):
+            x = pos.loc[n]
+            md.append(f"| {n} | {x.test_pos_min}~{x.test_pos_max} | {x.train_pos_min}~{x.train_pos_max} | "
+                      f"{int(x.flagged)}/{len(one[one.n_labels == n])} | {x.rate / x.n_test:.1%} | "
+                      + " | ".join(fmt(auroc.loc[n, c]) for c in cols) + " |")
+        md.append("")
+    return md
 
 
 def fmt(v, nd=3):
@@ -207,6 +240,9 @@ def main() -> int:
                    "| 분할 | 라벨 수 | 중앙값 차이 | p (Holm) |", "|---|---:|---:|---:|"]
             md += [f"| {x.split} | {x.n_labels} | {fmt(x.median_diff)} | {fmt(x.p_holm, 4)} |" for x in ws.itertuples()]
         md.append("")
+
+    if task == "classification":
+        md += classification_extras(d)
 
     out = ROOT / "reports" / f"{args.group}_{args.dataset}.md"
     out.write_text("\n".join(md))

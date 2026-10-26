@@ -108,3 +108,18 @@ valid로만 골랐지만, "readout을 탐색해야 한다"는 설계 결정 자�
 - B(LightGBM)도 같은 규약이지만 결정론 모드에서 시드 효과가 작아 같은 크기의 낙관 편향을 기대하지 않는다 (측정하지 않음)
 
 근거: `reports/chemprop_aqsoldb.md` §2
+
+## AUPRC는 분할끼리 직접 비교할 수 없다 (Tox21 SR-ARE)
+
+AUPRC의 무작위 기준선은 test 양성률이다. 그런데 분할마다 이 값이 다르다. random 15.3%, scaffold 24.5%(고정 test, 양성 135),
+scaffold_random 20.4%(시드에 따라 test 양성 90~125)다. 그래서 라벨 300개에서 scaffold의 B(0.422)가 random(0.352)보다
+높게 나오지만, 이는 scaffold가 더 쉬워서가 아니라 기준선이 높아서다. AUROC로 보면 scaffold가 가장 낮다(B 0.673 vs random 0.737).
+
+- 모델 간 비교는 같은 분할·같은 시드 안에서만 하므로 결론(B > A, A+B ≈ B)에는 영향이 없다
+- 분할 간 일반화 격차를 말할 때는 AUPRC가 아니라 AUROC나 양성률 대비 배수(AUPRC ÷ 양성률)를 쓴다
+- valid 민감도(proportional, valid 38개)에서는 valid 양성이 5~7개뿐이다. 그래서 이 조건의 HP 선택은 사실상 잡음에 가깝다.
+  그래도 AUPRC가 0.001~0.027 떨어진 것에 그쳤고, B − A 결론도 그대로다
+- 베이스라인 그리드는 분자별 test 예측(`--save-preds`)을 저장하지 않았다. 결정론 실행이라 필요하면 같은 지표로 다시 만들 수 있다
+  (분할×시드 하나당 약 9분)
+
+근거: `reports/baselines_tox21_SR-ARE.md` §4·§5
