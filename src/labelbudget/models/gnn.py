@@ -55,7 +55,7 @@ class DMPNNEstimator:
     def _new_model(self) -> DMPNN:
         p = self.params
         return DMPNN(d_h=p["d_h"], depth=p["depth"], dropout=p["dropout"], ffn_hidden=p["ffn_hidden"],
-                     ffn_layers=p["ffn_layers"]).to(self.device)
+                     ffn_layers=p["ffn_layers"], readout=p.get("readout", "mean")).to(self.device)
 
     def _raw(self, X: Sequence[MolGraph]) -> np.ndarray:
         self.model.eval()

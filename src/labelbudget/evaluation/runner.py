@@ -27,7 +27,7 @@ from labelbudget.evaluation.metrics import choose_threshold, classification_metr
 from labelbudget.featurize.descriptors import DescriptorSelector, compute_descriptors
 from labelbudget.featurize.fingerprints import ecfp4
 from labelbudget.models.gbm import LGBM_SPACE, best_of, make_lgbm, predict, search_trace
-from labelbudget.models.gnn_space import GNN_SPACE
+from labelbudget.models.gnn_space import GNN_SPACE, GNN_SPACE_V2
 from labelbudget.splits.strategies import make_split
 
 if TYPE_CHECKING:
@@ -46,6 +46,7 @@ MODELS: dict[str, ModelSpec] = {
     "B_desc_lgbm": ModelSpec(("desc",), LGBM_SPACE, "lgbm"),
     "AB_ecfp_desc_lgbm": ModelSpec(("ecfp", "desc"), LGBM_SPACE, "lgbm"),
     "C_dmpnn": ModelSpec(("graph",), GNN_SPACE, "gnn"),
+    "C_dmpnn_v2": ModelSpec(("graph",), GNN_SPACE_V2, "gnn"),  # readout {mean, norm} 탐색 (04 §6.3)
 }
 BASELINES: dict[str, tuple[str, ...]] = {k: v.features for k, v in MODELS.items() if v.kind == "lgbm"}
 VALID_POLICIES = ("full", "proportional")

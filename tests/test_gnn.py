@@ -7,6 +7,7 @@ from labelbudget.evaluation.runner import FeatureStore, run_grid
 from labelbudget.featurize.graph import mol_graph
 from labelbudget.models.gbm import LGBM_SPACE, sample_params
 from labelbudget.models.gnn import GNN_SPACE, DMPNNEstimator
+from labelbudget.models.gnn_space import GNN_SPACE_V2
 
 SMILES = ["CCO", "CCCO", "CCCCO", "c1ccccc1", "Cc1ccccc1", "CCc1ccccc1", "c1ccncc1", "Cc1ccncc1",
           "C1CCCCC1", "CC1CCCCC1", "CCOC(=O)C", "CC(=O)O", "CCN", "CCCN", "c1ccc2ccccc2c1", "Oc1ccccc1"]
@@ -28,6 +29,21 @@ def test_sample_params_choice_and_lgbm_stream_unchanged():
     a = sample_params(LGBM_SPACE, np.random.default_rng(1004))
     assert a == sample_params(LGBM_SPACE, np.random.default_rng(1004))
     assert set(a) == set(LGBM_SPACE)
+
+
+def test_space_v2_adds_readout_only():
+    assert {k: v for k, v in GNN_SPACE_V2.items() if k != "readout"} == GNN_SPACE
+    assert GNN_SPACE_V2["readout"] == ("choice", "mean", "norm")
+    assert {sample_params(GNN_SPACE_V2, np.random.default_rng(s))["readout"] for s in range(20)} == {"mean", "norm"}
+
+
+def test_estimator_readout_param(toy):
+    smiles, y = toy
+    G = [mol_graph(s) for s in smiles]
+    kw = dict(valid=(G[96:], y[96:]), max_epochs=1)
+    assert DMPNNEstimator("regression", FAST, seed=0, **kw).fit(G[:96], y[:96]).model.readout_how == "mean"
+    est = DMPNNEstimator("regression", {**FAST, "readout": "norm"}, seed=0, **kw).fit(G[:96], y[:96])
+    assert est.model.readout_how == "norm"
 
 
 def test_estimator_learns_and_is_deterministic(toy):

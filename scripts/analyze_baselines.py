@@ -21,9 +21,10 @@ from labelbudget.evaluation.stats import holm, paired_wilcoxon  # noqa: E402
 ROOT = Path(__file__).resolve().parents[1]
 # 모델 ↔ 색 고정 (dataviz 기준 팔레트 슬롯 순서. 엔티티를 따라가고 순위로 바꾸지 않는다)
 COLORS = {"A_ecfp_lgbm": "#2a78d6", "B_desc_lgbm": "#eb6834", "AB_ecfp_desc_lgbm": "#1baf7a",
-          "C_dmpnn": "#eda100", "D_dmpnn_pretrained": "#e87ba4"}
+          "C_dmpnn": "#eda100", "D_dmpnn_pretrained": "#e87ba4",
+          "C_dmpnn_v2": "#eda100"}  # C의 개정판(readout 탐색). 같은 엔티티라 같은 색 — 한 그림에 v1과 같이 그리지 않는다
 LABELS = {"A_ecfp_lgbm": "A  ECFP4+LGBM", "B_desc_lgbm": "B  서술자+LGBM", "AB_ecfp_desc_lgbm": "A+B",
-          "C_dmpnn": "C  D-MPNN", "D_dmpnn_pretrained": "D  D-MPNN+사전학습"}
+          "C_dmpnn": "C  D-MPNN", "D_dmpnn_pretrained": "D  D-MPNN+사전학습", "C_dmpnn_v2": "C  D-MPNN v2"}
 SURFACE, INK, INK2, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df"
 SPLITS = ["random", "scaffold", "scaffold_random"]
 SPLIT_LABEL = {"random": "random (낙관적 상한)", "scaffold": "scaffold (고정 test, 참고점)",

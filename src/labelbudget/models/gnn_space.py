@@ -15,3 +15,6 @@ GNN_SPACE: dict[str, tuple] = {
     "ffn_layers": ("int", 1, 3),
     "batch_size": ("choice", 32, 64),
 }
+# C_dmpnn_v2 (04 §6.3, 2026-10-25): readout을 탐색한다. 원인 진단(§6.2)에서 mean readout이 대예산 격차의 원인이었다.
+# GNN_SPACE는 바꾸지 않는다 (기존 C_dmpnn 결과 재현용)
+GNN_SPACE_V2: dict[str, tuple] = {**GNN_SPACE, "readout": ("choice", "mean", "norm")}

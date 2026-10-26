@@ -79,8 +79,24 @@ G4-(b)에서 HP 탐색 없이 돌린 chemprop 기본값(hidden 300, depth 3, FFN
   B를 8/10 시드 이겼다 (−0.027, p 0.21, 유의하지 않음)
 - 100~1000개에서는 chemprop 기본값도 B에 10/10 시드 진다. 저예산 결론은 설정과 무관하게 유지된다
 - 주 결과의 C는 바꾸지 않는다. chemprop 기본값은 사후 선택이 아니라 사전에 정한 기준점이라 보고서에 그대로 같이 적는다
+- **후속 조치 (04 §6.3):** readout {mean, norm}을 탐색 공간에 넣은 `C_dmpnn_v2`로 다시 돌렸다. valid가 100개 8/10, 나머지
+  모든 예산에서 10/10 시드 norm을 골랐고, v2는 모든 예산에서 기존 C보다 낫다 (중앙값 −0.087~−0.141, Holm p ≤ 0.049).
+  chemprop 기본값과의 격차는 전체 예산에서 사라졌다 (−0.001, p 0.92). 이 항목의 "C"는 v1(`C_dmpnn`) 기준이다
 
-근거: `reports/chemprop_aqsoldb.md` §3
+근거: `reports/chemprop_aqsoldb.md` §3, `reports/gnn_v2_aqsoldb.md` §7·§8
+
+## C_dmpnn_v2의 탐색 공간은 test 결과를 본 뒤 바꿨다 (AqSolDB)
+
+readout을 탐색 공간에 넣기로 한 근거는 chemprop 기본값과 원인 진단의 **test** RMSE다(04 §6.2). v2 안에서 readout과 HP는
+valid로만 골랐지만, "readout을 탐색해야 한다"는 설계 결정 자체는 test를 본 뒤에 내렸다.
+
+- v1(`C_dmpnn`) 결과는 지우지 않고 사전 등록 분석으로 남긴다. v2는 그 후속 수정이라고 명시해 보고한다
+- 결정 전에 "D의 비교 대상은 결과와 무관하게 v2"로 정했으므로(04 §6.3), v2 결과를 보고 C를 다시 고르지는 않는다
+- 같은 AqSolDB test로 v1·v2를 비교했으므로 v2 − v1 차이(−0.09~−0.14)는 약간 낙관적일 수 있다. 다른 데이터셋(Tox21 등)에서
+  처음부터 v2 공간으로 돌리면 이 문제는 없다
+- 탐색 차원이 하나 늘어 시도 HP 후보열이 v1과 전부 다르다. v2 − v1에는 readout 효과와 후보열 차이가 섞여 있다
+
+근거: `docs/design/04_GNN_SPEC.md` §6.2·§6.3, `reports/gnn_v2_aqsoldb.md` §7
 
 ## C의 보고값은 초기화까지 valid로 고른 값이다 (AqSolDB)
 

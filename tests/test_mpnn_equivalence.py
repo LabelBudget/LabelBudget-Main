@@ -60,6 +60,13 @@ def test_readout_mean_matches_manual():
     assert torch.allclose(out[0], h[:3].mean(0)) and torch.allclose(out[1], h[3:].mean(0))
 
 
+def test_readout_norm_is_sum_over_100():
+    g = _batch(["CCO", "c1ccccc1"])
+    h = torch.arange(g.V.shape[0] * 2, dtype=torch.float64).reshape(-1, 2)
+    out = readout(h, g.batch, g.n_mols, "norm")
+    assert torch.allclose(out[0], h[:3].sum(0) / 100) and torch.allclose(out[1], h[3:].sum(0) / 100)
+
+
 def test_dmpnn_forward_shape():
     model = DMPNN(d_h=16, depth=2, ffn_hidden=8).double()
     assert model(_batch()).shape == (len(SMILES),)
@@ -111,3 +118,14 @@ def test_direct_vs_chemprop(depth):
     with torch.no_grad():
         diff = (enc(_batch()) - ref(bmg)).abs().max().item()
     assert diff < TOL, f"depth={depth}: {diff}"
+
+
+@pytest.mark.parametrize("how,agg", [("mean", "MeanAggregation"), ("norm", "NormAggregation")])
+def test_readout_vs_chemprop(how, agg):
+    _chemprop()
+    import chemprop.nn as cnn
+
+    g = _batch()
+    h = torch.randn(g.V.shape[0], 8, dtype=torch.float64, generator=torch.Generator().manual_seed(0))
+    ref = getattr(cnn, agg)()(h, g.batch)
+    assert (readout(h, g.batch, g.n_mols, how) - ref).abs().max().item() < TOL
