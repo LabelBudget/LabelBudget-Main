@@ -72,6 +72,7 @@ def main() -> int:
         n_jobs=args.n_jobs,
         gnn_opts=conf.get("gnn"),
         pred_dir=args.save_preds,
+        root=ROOT,
     )
     print(f"→ {out}")
     return 0

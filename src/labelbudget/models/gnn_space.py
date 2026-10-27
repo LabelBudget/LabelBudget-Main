@@ -18,3 +18,7 @@ GNN_SPACE: dict[str, tuple] = {
 # C_dmpnn_v2 (04 §6.3, 2026-10-25): readout을 탐색한다. 원인 진단(§6.2)에서 mean readout이 대예산 격차의 원인이었다.
 # GNN_SPACE는 바꾸지 않는다 (기존 C_dmpnn 결과 재현용)
 GNN_SPACE_V2: dict[str, tuple] = {**GNN_SPACE, "readout": ("choice", "mean", "norm")}
+# C_fixed·D_mask·D_contrast (05 §2 P4, 2026-10-27): 사전학습 인코더 크기를 chemprop 기본값으로 고정하고 나머지만 탐색한다.
+# 세 모델이 같은 공간·같은 시드를 쓰므로 시도별 HP 후보열도 같다
+FIXED_BACKBONE: dict[str, int] = {"d_h": 300, "depth": 3}
+GNN_SPACE_FIXED: dict[str, tuple] = {k: v for k, v in GNN_SPACE_V2.items() if k not in FIXED_BACKBONE}

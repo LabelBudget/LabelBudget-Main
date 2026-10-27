@@ -27,7 +27,7 @@ from labelbudget.evaluation.metrics import choose_threshold, classification_metr
 from labelbudget.featurize.descriptors import DescriptorSelector, compute_descriptors
 from labelbudget.featurize.fingerprints import ecfp4
 from labelbudget.models.gbm import LGBM_SPACE, best_of, make_lgbm, predict, search_trace
-from labelbudget.models.gnn_space import GNN_SPACE, GNN_SPACE_V2
+from labelbudget.models.gnn_space import FIXED_BACKBONE, GNN_SPACE, GNN_SPACE_FIXED, GNN_SPACE_V2
 from labelbudget.splits.strategies import make_split
 
 if TYPE_CHECKING:
@@ -39,14 +39,21 @@ class ModelSpec:
     features: tuple[str, ...]
     space: dict
     kind: str  # lgbm | gnn
+    fixed: dict = field(default_factory=dict)  # 탐색하지 않고 모든 시도에 넣는 HP
+    pretrained: str | None = None              # 인코더 초기 가중치 (저장소 루트 기준 경로)
 
 
+PRETRAINED_DIR = "models/pretrained"
 MODELS: dict[str, ModelSpec] = {
     "A_ecfp_lgbm": ModelSpec(("ecfp",), LGBM_SPACE, "lgbm"),
     "B_desc_lgbm": ModelSpec(("desc",), LGBM_SPACE, "lgbm"),
     "AB_ecfp_desc_lgbm": ModelSpec(("ecfp", "desc"), LGBM_SPACE, "lgbm"),
     "C_dmpnn": ModelSpec(("graph",), GNN_SPACE, "gnn"),
     "C_dmpnn_v2": ModelSpec(("graph",), GNN_SPACE_V2, "gnn"),  # readout {mean, norm} 탐색 (04 §6.3)
+    # 05 §2 P4: 크기 고정 대조군과 사전학습 2종. D는 인코더를 불러와 전체 미세조정한다
+    "C_fixed": ModelSpec(("graph",), GNN_SPACE_FIXED, "gnn", FIXED_BACKBONE),
+    "D_mask": ModelSpec(("graph",), GNN_SPACE_FIXED, "gnn", FIXED_BACKBONE, f"{PRETRAINED_DIR}/D_mask.pt"),
+    "D_contrast": ModelSpec(("graph",), GNN_SPACE_FIXED, "gnn", FIXED_BACKBONE, f"{PRETRAINED_DIR}/D_contrast.pt"),
 }
 BASELINES: dict[str, tuple[str, ...]] = {k: v.features for k, v in MODELS.items() if v.kind == "lgbm"}
 VALID_POLICIES = ("full", "proportional")
@@ -55,6 +62,10 @@ KEY_COLS = ["dataset", "target_task", "model", "split_strategy", "split_seed", "
 
 def config_hash(obj) -> str:
     return hashlib.sha256(json.dumps(obj, sort_keys=True, default=str).encode()).hexdigest()[:12]
+
+
+def file_sha256(path: Path) -> str:
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
 @dataclass
@@ -143,6 +154,7 @@ def run_grid(
     n_jobs: int = 1,
     gnn_opts: dict | None = None,
     hash_extra: dict | None = None,
+    root: Path | None = None,
     pred_dir: Path | None = None,
     log: Callable[[str], None] = print,
 ) -> pd.DataFrame:
@@ -152,6 +164,14 @@ def run_grid(
     keys = df.inchikey.to_numpy()
     checkpoints = sorted({k for k in (trial_checkpoints or []) if k < n_trials} | {n_trials})
     gnn_opts = gnn_opts or {}
+    root = root or Path.cwd()
+    weights = {}  # 모델 → (인코더 가중치 경로, SHA-256). 학습 중 파일이 바뀌어도 해시로 드러난다
+    for m in models:
+        if MODELS[m].pretrained:
+            w = root / MODELS[m].pretrained
+            if not w.exists():
+                raise FileNotFoundError(f"{m}: 사전학습 가중치 없음 {w} (scripts/pretrain.py)")
+            weights[m] = (w, file_sha256(w))
     if n_jobs > 1 and any(MODELS[m].kind == "lgbm" for m in models) and (
             "torch" in sys.modules or any(MODELS[m].kind == "gnn" for m in models)):
         # torch의 libomp와 LightGBM의 libomp가 충돌해 멀티스레드 학습이 세그폴트로 죽는다
@@ -160,8 +180,12 @@ def run_grid(
         # 반대 방향도 같다: lightgbm이 먼저 실린 뒤 torch를 실으면 torch 멀티스레드 연산이 죽는다
         raise RuntimeError("lightgbm이 torch보다 먼저 로드됐다: GNN은 lightgbm을 import하지 않은 프로세스에서 실행할 것")
 
-    def chash(spec: ModelSpec) -> str:
+    def chash(spec: ModelSpec, model: str) -> str:
         extra = {**(hash_extra or {}), **({"gnn": gnn_opts} if spec.kind == "gnn" else {})}
+        if spec.fixed:
+            extra["fixed"] = spec.fixed
+        if model in weights:
+            extra["pretrained_sha256"] = weights[model][1]
         return config_hash({"n_trials": n_trials, "checkpoints": checkpoints, "space": spec.space,
                             "frac": [frac_train, frac_valid, frac_test], "offset": subsample_seed_offset, **extra})
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -197,8 +221,9 @@ def run_grid(
                     else:
                         from labelbudget.models.gnn import DMPNNEstimator
 
-                        def model_fn(params, seed, X_va=X_va, y_va=y_all[va]):
-                            return DMPNNEstimator(task, params, seed, valid=(X_va, y_va), **gnn_opts)
+                        def model_fn(params, seed, X_va=X_va, y_va=y_all[va], spec=spec, model=model):
+                            return DMPNNEstimator(task, {**spec.fixed, **params}, seed, valid=(X_va, y_va),
+                                                  init_encoder=weights.get(model, (None,))[0], **gnn_opts)
                     trace = search_trace(model_fn, spec.space, X_tr, y_all[tr], X_va, y_all[va],
                                          n_trials=n_trials, seed=sub_seed, task=task)
                     rows, evaluated, preds = [], {}, {}
@@ -226,7 +251,7 @@ def run_grid(
                             "hp_n_trials": k, "hp_selected": pkey,
                             "hp_valid_score": val_score, "features": json.dumps(finfo, sort_keys=True),
                             "leakage_exact": lk["exact_overlap"], "leakage_skeleton": lk["skeleton_overlap"],
-                            "config_hash": chash(spec),
+                            "config_hash": chash(spec, model),
                         }
                         rows += [{**common, "metric_name": m, "metric_value": v} for m, v in metrics.items()
                                  if isinstance(v, (int, float)) and not isinstance(v, bool)]

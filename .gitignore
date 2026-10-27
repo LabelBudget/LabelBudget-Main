@@ -20,3 +20,8 @@ venv/
 
 # 병렬 실행 중간 산출물 (run_parallel.py가 합친 CSV만 커밋)
 reports/results/**/parts/
+
+# 실행 로그·자원 기록
+logs/
+# 사전학습 체크포인트(에폭별). 최종 가중치 models/pretrained/*.pt만 커밋
+models/pretrained/ckpt/

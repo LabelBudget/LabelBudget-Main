@@ -8,6 +8,7 @@ from __future__ import annotations
 import copy
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -40,7 +41,7 @@ def _runtime(deterministic: bool, threads: int | None) -> Iterator[None]:
 class DMPNNEstimator:
     def __init__(self, task: str, params: dict, seed: int, *, valid: tuple[Sequence[MolGraph], np.ndarray],
                  max_epochs: int = 100, patience: int = 10, device: str = "cpu", deterministic: bool = True,
-                 threads: int | None = None, eval_batch: int = 512):
+                 threads: int | None = None, eval_batch: int = 512, init_encoder: str | Path | None = None):
         # 결정 G3 (2026-10-23): CPU + 결정론 모드. 끄면 같은 시드에서도 조기 종료 시점이 갈려 결과가 달라진다.
         # MPS는 index_add_ 역전파에 결정론 구현이 없어 deterministic=True와 함께 쓸 수 없다 (docs/bench_gnn.md)
         if deterministic and device != "cpu":
@@ -49,6 +50,7 @@ class DMPNNEstimator:
         self.X_va, self.y_va = valid
         self.max_epochs, self.patience, self.device, self.eval_batch = max_epochs, patience, device, eval_batch
         self.deterministic, self.threads = deterministic, threads
+        self.init_encoder = init_encoder  # 사전학습 인코더 state_dict (D). 불러온 뒤 전체를 같은 lr로 미세조정한다
         self.history: list[float] = []
         self.best_epoch = -1
 
@@ -84,6 +86,8 @@ class DMPNNEstimator:
         self.mu, self.sigma = (y.mean(), y.std() or 1.0) if self.task == "regression" else (0.0, 1.0)
         target = torch.tensor((y - self.mu) / self.sigma, dtype=torch.float32)
         self.model = self._new_model()
+        if self.init_encoder is not None:
+            self.model.encoder.load_state_dict(torch.load(self.init_encoder, map_location=self.device))
         opt = torch.optim.Adam(self.model.parameters(), lr=self.params["lr"])
         loss_fn = nn.MSELoss() if self.task == "regression" else nn.BCEWithLogitsLoss()
         bs = int(self.params["batch_size"])

@@ -7,7 +7,9 @@ from labelbudget.evaluation.runner import FeatureStore, run_grid
 from labelbudget.featurize.graph import mol_graph
 from labelbudget.models.gbm import LGBM_SPACE, sample_params
 from labelbudget.models.gnn import GNN_SPACE, DMPNNEstimator
-from labelbudget.models.gnn_space import GNN_SPACE_V2
+from labelbudget.featurize.graph import batch_graphs
+from labelbudget.models.dmpnn import DMPNNEncoder
+from labelbudget.models.gnn_space import FIXED_BACKBONE, GNN_SPACE_FIXED, GNN_SPACE_V2
 
 SMILES = ["CCO", "CCCO", "CCCCO", "c1ccccc1", "Cc1ccccc1", "CCc1ccccc1", "c1ccncc1", "Cc1ccncc1",
           "C1CCCCC1", "CC1CCCCC1", "CCOC(=O)C", "CC(=O)O", "CCN", "CCCN", "c1ccc2ccccc2c1", "Oc1ccccc1"]
@@ -93,3 +95,41 @@ def test_deterministic_mode_is_scoped_and_cpu_only(toy):
     assert (torch.are_deterministic_algorithms_enabled(), torch.get_num_threads()) == before  # 전역 설정을 남기지 않는다
     with pytest.raises(ValueError, match="CPU"):
         DMPNNEstimator("regression", FAST, seed=0, valid=(G, y), device="mps")
+
+
+def test_space_fixed_drops_backbone_only():
+    assert FIXED_BACKBONE == {"d_h": 300, "depth": 3}
+    assert GNN_SPACE_FIXED == {k: v for k, v in GNN_SPACE_V2.items() if k not in ("d_h", "depth")}
+
+
+def test_init_encoder_loads_weights(toy, tmp_path):
+    smiles, y = toy
+    G = [mol_graph(s) for s in smiles]
+    torch.manual_seed(123)
+    enc = DMPNNEncoder(d_h=FAST["d_h"], depth=FAST["depth"])
+    torch.save(enc.state_dict(), tmp_path / "enc.pt")
+    est = DMPNNEstimator("regression", FAST, seed=0, valid=(G[96:], y[96:]), max_epochs=0, threads=1,
+                         init_encoder=tmp_path / "enc.pt").fit(G[:96], y[:96])
+    g = batch_graphs(G[:8])
+    enc.eval(), est.model.encoder.eval()
+    with torch.no_grad():
+        assert torch.equal(enc(g), est.model.encoder(g))  # 불러온 인코더가 저장한 것과 같은 출력을 낸다
+
+
+def test_run_grid_fixed_and_pretrained(toy, tmp_path):
+    smiles, y = toy
+    df = pd.DataFrame({"smiles": smiles, "inchikey": [f"K{i:04d}-X-N" for i in range(len(smiles))], "label": y})
+    kw = dict(dataset="toy", task="regression", target_task="y", features=FeatureStore.build(df),
+              strategies=["random"], split_seeds=[0], budgets=[None], n_trials=1, root=tmp_path,
+              gnn_opts={"max_epochs": 2, "patience": 2}, log=lambda _: None)
+    with pytest.raises(FileNotFoundError, match="D_mask"):
+        run_grid(df, models=["D_mask"], out_path=tmp_path / "x.csv", **kw)
+    (tmp_path / "models" / "pretrained").mkdir(parents=True)
+    torch.save(DMPNNEncoder(**FIXED_BACKBONE).state_dict(), tmp_path / "models" / "pretrained" / "D_mask.pt")
+    torch.set_num_threads(1)
+    res = run_grid(df, models=["C_fixed", "D_mask"], out_path=tmp_path / "g.csv", **kw)
+    # 두 모델은 같은 HP 후보를 쓰고(크기는 탐색하지 않는다), 가중치 해시 때문에 설정 해시만 다르다
+    hp = res.groupby("model").hp_selected.first()
+    assert hp["C_fixed"] == hp["D_mask"] and "d_h" not in hp["C_fixed"]
+    assert res.groupby("model").config_hash.first().nunique() == 2
+    assert res[res.model == "C_fixed"].metric_value.tolist() != res[res.model == "D_mask"].metric_value.tolist()
