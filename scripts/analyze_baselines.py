@@ -22,9 +22,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # 모델 ↔ 색 고정 (dataviz 기준 팔레트 슬롯 순서. 엔티티를 따라가고 순위로 바꾸지 않는다)
 COLORS = {"A_ecfp_lgbm": "#2a78d6", "B_desc_lgbm": "#eb6834", "AB_ecfp_desc_lgbm": "#1baf7a",
           "C_dmpnn": "#eda100", "D_dmpnn_pretrained": "#e87ba4",
-          "C_dmpnn_v2": "#eda100"}  # C의 개정판(readout 탐색). 같은 엔티티라 같은 색 — 한 그림에 v1과 같이 그리지 않는다
+          "C_dmpnn_v2": "#eda100",  # C의 개정판(readout 탐색). 같은 엔티티라 같은 색 — 한 그림에 v1과 같이 그리지 않는다
+          # 05 D 비교 (팔레트 6·7번 슬롯). 그리는 순서는 analyze_d.ORDER — 인접 쌍 색 구분 검증을 통과한 순서
+          "C_fixed": "#008300", "D_mask": "#e87ba4", "D_contrast": "#6250d6"}
 LABELS = {"A_ecfp_lgbm": "A  ECFP4+LGBM", "B_desc_lgbm": "B  서술자+LGBM", "AB_ecfp_desc_lgbm": "A+B",
-          "C_dmpnn": "C  D-MPNN", "D_dmpnn_pretrained": "D  D-MPNN+사전학습", "C_dmpnn_v2": "C  D-MPNN v2"}
+          "C_dmpnn": "C  D-MPNN", "D_dmpnn_pretrained": "D  D-MPNN+사전학습", "C_dmpnn_v2": "C  D-MPNN v2",
+          "C_fixed": "C_fixed  크기 고정", "D_mask": "D  마스킹 사전학습", "D_contrast": "D  대조학습 사전학습"}
 SURFACE, INK, INK2, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df"
 SPLITS = ["random", "scaffold", "scaffold_random"]
 SPLIT_LABEL = {"random": "random (낙관적 상한)", "scaffold": "scaffold (고정 test, 참고점)",
@@ -93,7 +96,7 @@ def _direct_labels(ax, ends, min_gap_pt: float = 11.0) -> None:
                     fontsize=8, color=INK2)
 
 
-def plot_curves(t: pd.DataFrame, metric: str, out: Path, title: str) -> None:
+def plot_curves(t: pd.DataFrame, metric: str, out: Path, title: str, order: list[str] | None = None) -> None:
     splits = [s for s in SPLITS if s in set(t.split_strategy)]
     fig, axes = plt.subplots(1, len(splits), figsize=(4.6 * len(splits), 4.0), sharey=True, facecolor=SURFACE)
     axes = np.atleast_1d(axes)
@@ -101,7 +104,7 @@ def plot_curves(t: pd.DataFrame, metric: str, out: Path, title: str) -> None:
         ax.set_facecolor(SURFACE)
         sub = t[t.split_strategy == split]
         ends = []
-        for model in [m for m in COLORS if m in set(sub.model)]:
+        for model in [m for m in (order or COLORS) if m in set(sub.model)]:
             s = sub[sub.model == model].sort_values("n_train")
             x, y, sd = s.n_train.to_numpy(), s["mean"].to_numpy(), s["std"].fillna(0).to_numpy()
             ax.fill_between(x, y - sd, y + sd, color=COLORS[model], alpha=0.12, linewidth=0)
@@ -124,8 +127,9 @@ def plot_curves(t: pd.DataFrame, metric: str, out: Path, title: str) -> None:
             ax.spines[side].set_color(GRID)
         ax.margins(x=0.25)
     axes[0].set_ylabel(f"test {metric.upper()} (평균 ± 1 SD, 시드)", fontsize=9, color=INK2)
-    handles = [plt.Line2D([], [], color=COLORS[m], linewidth=2, marker="o") for m in COLORS if m in set(t.model)]
-    fig.legend(handles, [LABELS[m] for m in COLORS if m in set(t.model)], loc="upper center",
+    shown = [m for m in (order or COLORS) if m in set(t.model)]
+    handles = [plt.Line2D([], [], color=COLORS[m], linewidth=2, marker="o") for m in shown]
+    fig.legend(handles, [LABELS[m] for m in shown], loc="upper center",
                ncol=len(handles), frameon=False, fontsize=8, labelcolor=INK2, bbox_to_anchor=(0.5, 1.0))
     fig.suptitle(title, fontsize=11, color=INK, y=1.07, x=0.01, ha="left")
     fig.tight_layout()
