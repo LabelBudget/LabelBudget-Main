@@ -2,7 +2,7 @@
 
 > 분자 물성 예측에서 자기지도 사전학습의 이득은 라벨 몇 개까지 유효한가?
 
-**🔗 웹 앱: [labelbudget.streamlit.app](https://labelbudget.streamlit.app)** — 라벨 예산 곡선·시드별 비교·심화 분석을 직접 탐색하고, SMILES로 용해도를 예측해 볼 수 있다.
+**🔗 웹 앱 [labelbudget.streamlit.app](https://labelbudget.streamlit.app)** · **저장소 [github.com/LabelBudget/LabelBudget-Main](https://github.com/LabelBudget/LabelBudget-Main)** · **한계 [LIMITATIONS.md](LIMITATIONS.md)**
 
 **결론: 이 설정에서는 라벨이 몇 개이든 유효하지 않았다.**
 서술자 + LightGBM(B)이 라벨 100개부터 전체까지 가장 강하거나 같았다. ZINC250k로 사전학습한 D-MPNN(D)은 용해도(AqSolDB)에서 같은 크기의 사전학습 없는 모델보다 오히려 나빴고(부정적 전이), 독성(Tox21 SR-ARE)에서는 효과가 없었다.
@@ -10,23 +10,81 @@
 
 ![AqSolDB 라벨 예산 곡선](reports/figures/aqsoldb_budget_curve_d.png)
 
-## 이 프로젝트가 보여주려는 것
+## 1. 해결하려 한 문제
 
-1. **딥러닝을 처음부터 구현한다** — D-MPNN을 torch 기본 연산(`scatter`)으로 직접 구현하고, 공식 chemprop 2.3.1과 출력이 비트 단위로 같음(15,326분자, max|Δ| = 0)을 테스트로 검증했다. 자기지도 사전학습 2종(원자 마스킹, GraphCL 대조학습)도 직접 구현했다.
-2. **그것이 언제 가치 있는지 공정하게 판단한다** — 모든 모델에 같은 하이퍼파라미터 탐색 예산, scaffold 분할, 시드 10개, 시드 쌍 Wilcoxon + Holm 보정. 판정 규칙은 결과 전에 고정했다.
-3. **데이터를 의심한다** — 용해도 과제에서 염 제거가 라벨을 파괴함을 실측으로 확인하고 표준화 정책을 바꿨다([`03_AQSOLDB_AUDIT.md`](docs/design/03_AQSOLDB_AUDIT.md)). 측정 노이즈 하한(출처 간 SD 0.30 logS)과 라벨 신뢰도를 결과 해석에 반영했다.
+신약·소재 개발에서 분자 물성 라벨은 실험으로만 얻을 수 있어 비싸다. 그래서 라벨 없는 분자 수십만 개로 GNN을 먼저 학습하는 **자기지도 사전학습**이 대안으로 제안됐다. 그런데 문헌의 답이 엇갈린다. 사전학습이 도움이 된다는 보고와, 공정하게 비교하면 이득이 거의 없고 서술자 기반 고전 ML이 여전히 강하다는 보고(Sun et al. 2022, Nature Communications 2023)가 함께 있다.
 
-## 핵심 결과
+이 프로젝트는 질문을 "도움이 되는가"에서 **라벨이 몇 개일 때까지 도움이 되는가**로 바꿨다. 라벨 100개부터 전체까지 예산을 늘려 가며, 같은 분할·같은 탐색 예산·같은 시드로 서술자 모델과 사전학습 GNN을 비교한다. 실무 질문으로 바꾸면 "라벨이 N개 있을 때 사전학습 GNN을 만들 가치가 있는가"다.
 
-| | AqSolDB (용해도 회귀, RMSE ↓) | Tox21 SR-ARE (독성 분류, AUPRC ↑) |
+| 가설 (결과 전 고정) | 내용 |
+|---|---|
+| H1 | 사전학습 이득은 라벨이 적을수록 크고, 늘수록 줄어든다 |
+| H2 | 작은 예산에서는 D가 B를 이기고, 큰 예산에서 B가 따라잡는 교차점이 있다 |
+| H3 | 그 교차점은 random 분할보다 scaffold 분할에서 더 오른쪽(큰 예산)에 있다 |
+| H4 | 사전학습 효과를 구조 탐색 효과(C v2 − C_fixed)와 구분해 본다 |
+
+## 2. 데이터 구성
+
+| 데이터 | 용도 | 과제 | 원본 → 정리 후 | test (분할당) | 출처 |
+|---|---|---|---:|---:|---|
+| **AqSolDB** | 주 평가 | 수용해도 logS 회귀 (범위 −13.2 ~ +2.1) | 9,982 → **8,703** | 871 | Sorkun et al., *Sci. Data* 2019 |
+| **Tox21 SR-ARE** | 분류 평가 | 산화 스트레스 반응 독성, 양성 약 16% (음성:양성 5.3:1) | 7,831 → **5,514** | 552 (양성 약 112) | Tox21 / MoleculeNet |
+| **ZINC250k** | 사전학습 (라벨 없음) | — | 249,455 → **249,219** | — | Gómez-Bombarelli et al., *ACS Cent. Sci.* 2018 |
+
+- **정리 규칙**: RDKit 표준화(토토머 정규화, 입체 정보 유지), 유기 분자만, 다성분(염·혼합물)·무거운 원자 3개 미만 또는 100개 초과·분자량 1,000 초과 거부. InChIKey 중복은 병합하되 AqSolDB는 값 차이가 0.5 logS를 넘으면 제거, Tox21은 다수결. 용해도에서 염을 떼어 내면 라벨이 바뀌므로 다성분은 거부했다([`03_AQSOLDB_AUDIT.md`](docs/design/03_AQSOLDB_AUDIT.md))
+- **누수 차단**: 평가셋과 골격(InChIKey 첫 블록)이 같은 ZINC 분자 115개를 사전학습 데이터에서 뺐다
+- **분할**: 주 분석은 **scaffold_random**(골격 단위로 train 80 / valid 10 / test 10%, 시드 0~9). 같은 골격이 학습과 test에 함께 들어가지 않아 새 화학 구조에 대한 일반화를 잰다. H3용으로 random 분할도 돌렸다
+- **라벨 예산**: 학습셋에서 회귀 100 · 300 · 1,000 · 3,000 · 전체(6,962), 분류 300 · 1,000 · 3,000 · 전체(4,411)개를 뽑는다. valid·test는 예산과 무관하게 고정
+- **라벨 품질**: AqSolDB 분자의 77.6%는 출처가 하나뿐이다. 복수 출처 분자의 출처 간 표준편차 평균은 0.30 logS로, 어떤 모델도 넘기 어려운 측정 노이즈 하한이다
+- 데이터 카드: [`aqsoldb`](docs/data_card_aqsoldb.md) · [`tox21_SR-ARE`](docs/data_card_tox21_SR-ARE.md) · [`zinc250k_pretrain`](docs/data_card_zinc250k_pretrain.md)
+
+## 3. 모델과 실험 설계
+
+| ID | 모델 | 비고 |
 |---|---|---|
-| 서술자(B) vs 지문(A) | B가 모든 분할·예산에서 우세 (10/10 시드) | 같음 |
-| GNN 처음부터(C v2) vs B | 유의 차 없음. 1,000개 이하는 B, 3,000개 이상은 C 쪽 | 모든 예산에서 B ≥ C, 3,000개 유의 |
-| **사전학습 D − 같은 크기 C_fixed** | **D가 나쁨**: 마스킹 +0.06~+0.16 (300개~전체 유의), 대조학습 +0.03~+0.11 (300~3,000개 유의) | 차이 없음 (모든 예산 Holm p = 1.0) |
-| D vs B (교차점, H2) | D가 이기는 예산 없음. 100개부터 B 우세 | D가 이기는 예산 없음 |
-| 분할을 바꾸면 교차점이 이동하는가 (H3) | 교차점이 없어 이동도 없음 | 같음 |
+| A | ECFP4(2048) + LightGBM | 바닥 기준 |
+| B | RDKit 2D 서술자 + LightGBM | 가장 강한 저비용 기준선 |
+| C v2 | D-MPNN 처음부터 학습 (크기·readout 탐색) | torch로 직접 구현, chemprop과 출력 비트 단위 동일 |
+| C_fixed | C와 같되 크기 고정 (d_h 300, depth 3) | 사전학습 효과만 분리하는 대조군 |
+| D_mask / D_contrast | C_fixed 백본 + ZINC250k 자기지도 사전학습 → 전체 미세조정 | 원자 마스킹(Hu et al. 2020) / GraphCL 대조학습(You et al. 2020) |
 
-모든 비교는 scaffold_random 분할(주 분석), 시드 10개 쌍 Wilcoxon, 예산 간 Holm 보정이다.
+- HP 탐색: 모든 모델 같은 예산(라벨 ≤1,000개 20회, ≥3,000개 10회), valid로만 선택
+- 비교: 시드 10개 쌍 **Wilcoxon 부호순위 검정**, 비교마다 예산 간 **Holm 보정**
+- 학습 조합 약 2,050개, 실패 0. 미세조정은 CPU 결정론 실행
+
+## 4. 최종 성능 지표
+
+scaffold_random 분할, test 분자 기준, 시드 10개 평균. **굵게**는 그 행의 최고값.
+
+**AqSolDB (용해도 회귀)**
+
+| 라벨 수 | 지표 | B 서술자+LGBM | C v2 | C_fixed | D 마스킹 | D 대조학습 |
+|---:|---|---:|---:|---:|---:|---:|
+| 100 | RMSE ↓ | **1.464** | 1.621 | 1.560 | 1.654 | 1.636 |
+| 300 | RMSE ↓ | **1.225** | 1.268 | 1.285 | 1.437 | 1.356 |
+| 전체 6,962 | RMSE ↓ | 1.026 | **0.994** | 0.997 | 1.053 | 1.023 |
+| 전체 6,962 | MAE ↓ | 0.762 | **0.748** | **0.748** | 0.800 | 0.766 |
+| 전체 6,962 | R² ↑ | 0.796 | **0.808** | **0.808** | 0.785 | 0.797 |
+
+**Tox21 SR-ARE (독성 분류)**
+
+| 라벨 수 | 지표 | B 서술자+LGBM | C v2 | C_fixed | D 마스킹 | D 대조학습 |
+|---:|---|---:|---:|---:|---:|---:|
+| 300 | AUPRC ↑ | **0.377** | 0.356 | 0.353 | 0.346 | 0.350 |
+| 전체 4,411 | AUPRC ↑ | **0.538** | 0.506 | 0.477 | 0.473 | 0.491 |
+| 전체 4,411 | AUROC ↑ | **0.804** | 0.779 | 0.766 | 0.761 | 0.768 |
+
+AUPRC의 무작위 기준선은 test 양성률(약 0.20)이다. 3,000개·전체는 탐색 10회 체크포인트 값이다.
+
+**사전 등록 가설 판정**
+
+| | AqSolDB | Tox21 SR-ARE |
+|---|---|---|
+| **사전학습 효과 D − C_fixed** | **D가 나쁨**: 마스킹 RMSE +0.06~+0.16 (300개~전체 Holm 유의, 10/10 시드), 대조학습 +0.03~+0.11 (300~3,000개 유의) | 차이 없음 (모든 예산 Holm p = 1.0) |
+| H1 저예산 이득 | 기각 | 기각 |
+| H2 교차점 | 없음 — D가 이기는 예산 없음, 라벨 100개부터 B 우세 | 없음 — D가 이기는 예산 없음 |
+| H3 분할에 따른 이동 | 판정 불가 — 두 분할 모두 교차점 없음 | 판정 불가 |
+| H4 구조 탐색 효과 | C v2 − C_fixed 모든 예산 유의하지 않음 → D의 열세는 사전학습 가중치에서 옴 | 같음 |
 
 **추가 분석**
 
@@ -34,21 +92,43 @@
 - **라벨 신뢰도** — 출처가 하나뿐인 분자는 복수 출처 분자보다 RMSE가 0.13~0.27 크다. 같은 층 안의 모델 간 차이(≤ 0.04)보다 크다 → [`reliability_aqsoldb.md`](reports/reliability_aqsoldb.md)
 - **불확실성** — deep ensemble·MC dropout의 90% 구간은 실제로 21~43%만 포함한다(크게 과신, 오차와의 순위 상관 ≤ 0.11). split conformal은 83~88%로 거의 맞지만 폭이 3~4.5 logS로 넓다 → [`uncertainty_aqsoldb.md`](reports/uncertainty_aqsoldb.md)
 
-결론의 범위와 한계는 [`LIMITATIONS.md`](LIMITATIONS.md)에 있다. 특히 사전학습은 방법당 1회·문헌 기본 HP·25만 개 규모이고, 미세조정 방식은 하나뿐이다.
+## 5. 한계점
 
-## 모델
+자세한 근거는 [`LIMITATIONS.md`](LIMITATIONS.md).
 
-| ID | 모델 | 비고 |
-|---|---|---|
-| A | ECFP4(2048) + LightGBM | 바닥 기준 |
-| B | RDKit 2D 서술자 + LightGBM | 가장 강한 저비용 기준선 |
-| C v2 | D-MPNN 처음부터 학습 (크기·readout 탐색) | 직접 구현 |
-| C_fixed | C와 같되 크기 고정 (d_h 300, depth 3) | 사전학습 효과만 분리하는 대조군 |
-| D_mask / D_contrast | C_fixed 백본 + ZINC250k 자기지도 사전학습 → 전체 미세조정 | 원자 마스킹 / GraphCL 대조학습 |
+- **사전학습 규모와 횟수** — ZINC250k는 Hu et al.(ZINC 200만 개)의 약 1/8이고, 방법마다 1회만 문헌 기본 HP로 학습했다(MPS, 비결정론). 결론은 "이 규모·이 설정에서"로 한정한다
+- **원인을 하나로 좁히지 못함** — 미세조정 방식이 하나뿐(인코더·헤드 같은 학습률)이라, 부정적 전이가 표현 자체 때문인지 미세조정 방식 때문인지 실험으로 가르지 않았다
+- **데이터셋 2개** — 회귀 1개·분류 1개라 다른 물성으로 일반화하기는 이르다
+- **라벨 노이즈 하한** — AqSolDB 측정 노이즈(0.30 logS)와 단일 출처 라벨 때문에 test RMSE의 일부는 어떤 모델로도 줄일 수 없다
+- **test를 본 뒤의 설계 변경 1건** — C의 readout 탐색(v2)은 공식 chemprop과 대조한 test 결과를 보고 추가했다. 사전 등록 결과(v1)도 함께 보고한다
+- **범위 축소** — H3는 random 분할만, 큰 예산은 탐색 10회, 불확실성 비교는 AqSolDB만 했다 (기한 때문, 결과 전에 결정)
 
-- 라벨 예산: 회귀 `100 → 300 → 1K → 3K → 전체`, 분류 `300 → 1K → 3K → 전체` (test 고정)
-- HP 탐색: 라벨 ≤1,000개 20회, ≥3,000개 10회. 모든 모델을 같은 체크포인트로 비교
-- 학습 조합 약 2,050개, 실패 0. 미세조정은 CPU 결정론 실행
+## 6. 링크
+
+| 종류 | 링크 |
+|---|---|
+| 데모 (웹 앱) | [labelbudget.streamlit.app](https://labelbudget.streamlit.app) — 결과 탐색 + SMILES 용해도 예측 |
+| GitHub 저장소 | [github.com/LabelBudget/LabelBudget-Main](https://github.com/LabelBudget/LabelBudget-Main) |
+| 연구 설계 · 판정 규칙 | [`01_RESEARCH_PLAN.md`](docs/design/01_RESEARCH_PLAN.md) · [`05_PRETRAIN_SPEC.md`](docs/design/05_PRETRAIN_SPEC.md) |
+| 결과 보고서 | [`d_aqsoldb.md`](reports/d_aqsoldb.md) · [`d_tox21_SR-ARE.md`](reports/d_tox21_SR-ARE.md) 외 아래 "보고서" 절 |
+| 모델 카드 | [`model_card.md`](docs/model_card.md) |
+
+**참고 논문**
+
+- Sun et al., *Does GNN Pretraining Help Molecular Representation?* NeurIPS 2022 — [arXiv:2207.06010](https://arxiv.org/abs/2207.06010)
+- Deng et al., *A systematic study of key elements underlying molecular property prediction*, Nature Communications 2023 — [s41467-023-41948-6](https://www.nature.com/articles/s41467-023-41948-6)
+- Hu et al., *Strategies for Pre-training Graph Neural Networks*, ICLR 2020 — [arXiv:1905.12265](https://arxiv.org/abs/1905.12265)
+- You et al., *Graph Contrastive Learning with Augmentations (GraphCL)*, NeurIPS 2020 — [arXiv:2010.13902](https://arxiv.org/abs/2010.13902)
+- Yang et al., *Analyzing Learned Molecular Representations for Property Prediction (D-MPNN)*, J. Chem. Inf. Model. 2019 — [doi:10.1021/acs.jcim.9b00237](https://doi.org/10.1021/acs.jcim.9b00237)
+- Sorkun et al., *AqSolDB, a curated reference set of aqueous solubility and 2D descriptors*, Scientific Data 2019 — [PMC6687799](https://pmc.ncbi.nlm.nih.gov/articles/PMC6687799)
+- Wu et al., *MoleculeNet: a benchmark for molecular machine learning*, Chemical Science 2018 — [doi:10.1039/C7SC02664A](https://doi.org/10.1039/C7SC02664A)
+- Gómez-Bombarelli et al., *Automatic Chemical Design Using a Data-Driven Continuous Representation of Molecules*, ACS Central Science 2018 (ZINC250k) — [doi:10.1021/acscentsci.7b00572](https://doi.org/10.1021/acscentsci.7b00572)
+
+## 이 프로젝트가 보여주려는 것
+
+1. **딥러닝을 처음부터 구현한다** — D-MPNN을 torch 기본 연산(`scatter`)으로 직접 구현하고, 공식 chemprop 2.3.1과 출력이 비트 단위로 같음(15,326분자, max|Δ| = 0)을 테스트로 검증했다. 자기지도 사전학습 2종(원자 마스킹, GraphCL 대조학습)도 직접 구현했다.
+2. **그것이 언제 가치 있는지 공정하게 판단한다** — 모든 모델에 같은 하이퍼파라미터 탐색 예산, scaffold 분할, 시드 10개, 시드 쌍 Wilcoxon + Holm 보정. 판정 규칙은 결과 전에 고정했다.
+3. **데이터를 의심한다** — 용해도 과제에서 염 제거가 라벨을 파괴함을 실측으로 확인하고 표준화 정책을 바꿨다. 측정 노이즈 하한과 라벨 신뢰도를 결과 해석에 반영했다.
 
 ## 검증과 재현성
 
