@@ -1,0 +1,10 @@
+# 데모 앱 테마. 그림 색은 밝은 배경에서 색 구분을 검증했으므로 밝은 테마로 고정한다
+[theme]
+base = "light"
+primaryColor = "#3d3d3a"
+backgroundColor = "#fcfcfb"
+secondaryBackgroundColor = "#f3f3f0"
+textColor = "#1d1d1f"
+
+[browser]
+gatherUsageStats = false

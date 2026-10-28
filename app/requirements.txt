@@ -1,0 +1,12 @@
+# Streamlit Community Cloud 배포용 (Linux, Python 3.13). 로컬 labelbudget-app 환경과 같은 버전으로 고정한다
+# RDKit 버전이 바뀌면 서술자 값이 달라져 B 예측이 바뀐다. torch는 CPU 전용 휠 (CUDA 휠은 수 GB)
+--extra-index-url https://download.pytorch.org/whl/cpu
+streamlit==1.66.1
+altair==6.3.0
+rdkit==2026.09.1
+lightgbm==4.7.0
+torch==2.14.1+cpu
+numpy==2.5.4
+pandas==3.0.6
+pyarrow==26.0.0
+pyyaml==6.0.3

@@ -1,0 +1,27 @@
+name,smiles,measured,role,note
+caffeine,Cn1c(=O)c2c(ncn2C)n(C)c1=O,-0.91,학습,앱 학습셋 안
+naphthalene,c1ccc2ccccc2c1,-4.3112256046,학습,앱 학습셋 안
+benzene,c1ccccc1,-1.6423088751,학습,앱 학습셋 안
+ethanol,CCO,1.2336682179,학습,앱 학습셋 안
+toluene,Cc1ccccc1,-2.2062982993,학습,앱 학습셋 안
+anthracene,c1ccc2cc3ccccc3cc2c1,-6.4448105798,학습,앱 학습셋 안
+pyrene,c1cc2ccc3cccc4ccc(c1)c2c34,-6.1787966156,test,앱 학습셋 밖 — 실측값과 비교해 볼 수 있다
+urea,NC(N)=O,0.9578400994,학습,앱 학습셋 안
+Testosterone,CC12CCC(=O)C=C1CCC1C2CCC2(C)C(O)CCC12,-4.02,test,앱 학습셋 밖 — 실측값과 비교해 볼 수 있다
+Lindane,ClC1C(Cl)C(Cl)C(Cl)C(Cl)C1Cl,-4.64,valid,앱 학습셋 밖 — 실측값과 비교해 볼 수 있다
+phenol,Oc1ccccc1,-0.04,학습,앱 학습셋 안
+benzoic acid,O=C(O)c1ccccc1,-1.619929844,학습,앱 학습셋 안
+"p,p'-ddt",Clc1ccc(C(c2ccc(Cl)cc2)C(Cl)(Cl)Cl)cc1,-7.8092,test,앱 학습셋 밖 — 실측값과 비교해 볼 수 있다
+phenytoin,O=C1NC(=O)C(c2ccccc2)(c2ccccc2)N1,-3.99,학습,앱 학습셋 안
+chlorobenzene,Clc1ccccc1,-2.4493202347,학습,앱 학습셋 안
+carbamazepine,NC(=O)N1c2ccccc2C=Cc2ccccc21,-3.29,학습,앱 학습셋 안
+estradiol,C[C@]12CC[C@@H]3c4ccc(O)cc4CC[C@H]3[C@@H]1CC[C@@H]2O,-4.8789,test,앱 학습셋 밖 — 실측값과 비교해 볼 수 있다
+camphor,CC12CCC(CC1=O)C2(C)C,-1.9784,학습,앱 학습셋 안
+hexane,CCCCCC,-3.9441703352,학습,앱 학습셋 안
+acetone,CC(C)=O,1.236,학습,앱 학습셋 안
+Cholesterol,CC(C)CCC[C@@H](C)[C@H]1CC[C@H]2[C@@H]3CC=C4C[C@@H](O)CC[C@]4(C)[C@H]3CC[C@]12C,-7.1001953639,학습,앱 학습셋 안
+아스피린,CC(=O)Oc1ccccc1C(=O)O,,—,기본값. 학습셋에 있는 분자
+붕소 케이지,B12B3B4B1C234,,—,"적용 범위 밖 경고 (GNN이 −65로 외삽했던 분자, LIMITATIONS)"
+페로센,[CH-]1C=CC=C1.[CH-]1C=CC=C1.[Fe+2],,—,거부: 다성분 (금속 착물)
+염화나트륨,[Na+].[Cl-],,—,거부: 다성분 (염)
+메탄,C,,—,거부: 무거운 원자 3개 미만
