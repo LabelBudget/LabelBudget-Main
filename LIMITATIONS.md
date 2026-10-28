@@ -158,3 +158,12 @@ AqSolDB scaffold_random에서 두 D 모두 같은 크기의 사전학습 없는 
 
 결론의 범위: "ZINC250k에서 문헌 기본 설정으로 사전학습한 D-MPNN을 전체 미세조정하면, AqSolDB scaffold 분할에서 사전학습 없는 같은 크기 모델보다 나빴다."
 
+## 불확실성 비교의 범위 (2026-10-28)
+
+- AqSolDB scaffold_random, C v2와 D_contrast만 했다. Tox21(분류)과 B(LightGBM)는 하지 않았다 (05 §2.2 U2)
+- 앙상블·MC dropout은 HP를 새로 탐색하지 않고 주 그리드가 고른 값을 썼다. dropout을 불확실성용으로 키우면 결과가 달라질 수 있다
+- 구간은 정규 가정(평균 ± 1.645·SD)으로 만들었다. 포함률이 0.21~0.43으로 낮은 것은 분산 크기 자체의 문제라 분포 가정을 바꿔도 크게 달라지지 않을 것으로 보지만 확인하지 않았다
+- split conformal 포함률(0.83~0.88)이 목표보다 낮은 원인을 "valid·test 골격 차이로 교환 가능성이 깨짐"으로 해석했지만, random 분할에서 같은 비교를 하지 않아 확인하지 않았다
+
+근거: `reports/uncertainty_aqsoldb.md`
+

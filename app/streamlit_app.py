@@ -83,8 +83,9 @@ def main() -> None:
     else:
         st.info(f"가장 비슷한 학습 분자 (Tanimoto {sims[k]:.2f}): `{train[k]}`")
     with st.expander("모델 정보"):
-        st.dataframe(pd.DataFrame({m: {"학습 분자": v["n_train"], "test RMSE (시드 0)": round(v["test_rmse"], 3),
-                                       "분할": v["split"]} for m, v in meta.items()}))
+        # 모델을 행으로 둔다 (열마다 한 가지 타입이어야 Arrow 변환이 된다)
+        st.dataframe(pd.DataFrame.from_dict({m: {"학습 분자": v["n_train"], "test RMSE (시드 0)": round(v["test_rmse"], 3),
+                                                 "분할": v["split"]} for m, v in meta.items()}, orient="index"))
         st.markdown("연구 결과 전체는 `reports/`의 보고서를 참고하세요. 시드 10개 평균과 통계 검정이 그쪽에 있습니다.")
 
 

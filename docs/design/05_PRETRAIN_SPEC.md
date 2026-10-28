@@ -296,7 +296,36 @@ B는 분자별 예측이 시드 6·9만 저장돼 있어 scaffold_random 주 그
 - "더 나은 D" (§2.2 U1, valid만): AqSolDB **D_contrast**, Tox21 **D_mask**
 - 사후 진단 (사전 등록 아님, `reports/d_diagnosis_aqsoldb.md`): 인코더를 고정한 선형 탐침에서 사전학습 표현이 무작위 초기화 표현보다 나빴다
   (전체 예산 RMSE D_mask 1.603, D_contrast 1.450, 무작위 1.420). D_mask 출력 규모는 무작위의 약 5배.
-  미세조정 절차보다 표현 자체가 용해도에 덜 유용한 부정적 전이로 해석한다. 이 범위(ZINC250k·D-MPNN·이 설정)를 넘어 일반화하지 않는다
+  미세조정 절차만의 문제가 아니라 표현 자체도 용해도에 덜 유용한 부정적 전이로 해석한다. 미세조정 변형으로 원인을 분리하지는 않았다 (`LIMITATIONS.md`).
+  이 범위(ZINC250k·D-MPNN·이 설정)를 넘어 일반화하지 않는다
+
+## 8. 결과: H3 · 라벨 신뢰도 · 불확실성 (2026-10-28)
+
+**H3 (§2.2 U1, random 분할)** — `reports/d_aqsoldb_random.md`, `reports/d_tox21_SR-ARE_random.md`. H2 규칙을 두 분할에 똑같이 적용했다.
+
+| 모델 − B | scaffold_random | random |
+|---|---|---|
+| AqSolDB D_contrast | D 우세 없음 · B 우세 최소 100 | D 우세 없음 · B 우세 최소 100 |
+| AqSolDB C v2 | 교차점 없음 | C 우세 없음 · B 우세 최소 100 |
+| Tox21 D_mask | D 우세 없음 · B 우세 최소 3,000 | D 우세 없음 · B 우세 최소 300 |
+| Tox21 C v2 | C 우세 없음 · B 우세 최소 3,000 | C 우세 없음 · B 우세 최소 1,000 |
+
+- 교차점(작은 예산 D 우세 → 큰 예산 B 우세)이 어느 분할에도 없어 H3는 전제가 성립하지 않는다. 이동을 판정할 수 없다
+- random에서 D − C v2: AqSolDB 100·1,000개 유의(D 열세), Tox21 전 예산 비유의
+
+**라벨 신뢰도** — `reports/reliability_aqsoldb.md`. 단일 출처(G1) test 분자의 RMSE가 복수 출처보다 0.13~0.27 크다 (B·C v2·D_contrast 공통, 7~10/10 시드). 기술 통계만.
+
+**불확실성 (§2.2 U2)** — `reports/uncertainty_aqsoldb.md`. 100개 조합, j=0 모델이 모든 조합에서 주 그리드 test RMSE를 재현했다.
+
+| 방법 | 90% 구간 포함률 (예산·모델 범위) | 평균 폭 (logS) | 표준편차–|오차| Spearman ρ |
+|---|---:|---:|---:|
+| deep ensemble 5개 | 0.25~0.36 | 0.71~1.05 | −0.01~0.11 |
+| MC dropout 30회 | 0.21~0.43 | 0.81~1.10 | 0.05~0.10 |
+| split conformal | 0.83~0.88 | 3.02~4.55 | — |
+
+- 앙상블·MC dropout의 분산은 오차를 거의 설명하지 못하고(ρ ≤ 0.11) 구간이 크게 좁다. 모델 간 불일치가 라벨 노이즈와 골격 이동을 잡지 못한다
+- conformal은 목표 0.90에 가깝지만 조금 모자란다. scaffold 분할에서 valid와 test의 골격이 달라 교환 가능성 가정이 깨지기 때문으로 본다
+- 앙상블 평균은 단일 모델보다 RMSE를 0.005~0.043 줄인다
 
 ---
 
@@ -307,3 +336,4 @@ B는 분자별 예측이 시드 6·9만 저장돼 있어 scaffold_random 주 그
 | 2026-10-27 | 초안: P1~P7 후보·권장안, ZINC 실측, 처리량 실측, 판정 규칙 | 이 문서 §1 |
 | 2026-10-27 12:20 | 확정: P1~P4·P6 권장안, P5 → MPS, P7 → 결과 전 범위 고정. T1~T4·U1~U3·축소 규칙 추가, GraphCL 값 확인, ZINC 정리 결과·부하 시 처리량 기록. **D·C_fixed test 결과를 보기 전** | 사용자 결정 (기한 10/29), §2.2 |
 | 2026-10-28 01:00 | §7 scaffold_random 결과, 사후 진단 추가 | `reports/d_*.md` |
+| 2026-10-28 13:40 | §8 H3·라벨 신뢰도·불확실성 결과, §7 사후 진단 해석 범위 명시 | `reports/d_*_random.md`, `reports/reliability_aqsoldb.md`, `reports/uncertainty_aqsoldb.md` |

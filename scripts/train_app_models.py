@@ -71,7 +71,8 @@ def main() -> int:
         est = DMPNNEstimator("regression", full, sub_seed, valid=([G[i] for i in va], y[va]),
                              init_encoder=ROOT / spec.pretrained, **conf["gnn"]).fit([G[i] for i in tr], y[tr])
         pred = est.predict([G[i] for i in te])
-        torch.save({"state_dict": est.model.state_dict(), "params": full, "mu": est.mu, "sigma": est.sigma},
+        # mu·sigma는 numpy 스칼라라 float으로 바꾼다 (torch.load 기본 weights_only=True가 numpy 객체를 거부한다)
+        torch.save({"state_dict": est.model.state_dict(), "params": full, "mu": float(est.mu), "sigma": float(est.sigma)},
                    out / f"{args.model}.pt")
     rmse = regression_metrics(y[te], pred)["rmse"]
     if abs(rmse - row.metric_value) > 1e-9:

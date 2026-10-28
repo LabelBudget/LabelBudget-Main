@@ -1,6 +1,6 @@
 # Model card — LabelBudget 데모 모델 (수용해도 logS)
 
-> 상태: 초안 (2026-10-28). 성능은 `reports/d_aqsoldb.md`(scaffold_random 주 분석)에서 옮겼다. random 분할(H3)·불확실성 결과는 나오는 대로 채운다.
+> 상태: 확정 (2026-10-28). 성능은 `reports/d_aqsoldb.md`(scaffold_random 주 분석), 불확실성은 `reports/uncertainty_aqsoldb.md`에서 옮겼다.
 
 ## 1. 무엇인가
 
@@ -42,11 +42,16 @@ valid 규칙(05 §2.2 U1)으로 고른 D는 **D_contrast(대조학습)**다. 비
 - **사전학습은 이 데이터에서 도움이 되지 않았다.** D_contrast는 300·1,000·3,000개에서 같은 크기의 사전학습 없는 C_fixed보다 유의하게 나쁘다 (시드 쌍 Wilcoxon, Holm). 앱이 D를 보여 주는 이유는 "사전학습 모델이 실제로 어떻게 예측하는가"를 시연하기 위해서이지, 더 좋은 모델이라서가 아니다
 - 사후 진단(사전 등록 아님): 사전학습 표현의 선형 탐침이 무작위 초기화 표현보다 나빴다 (`reports/d_diagnosis_aqsoldb.md`). 부정적 전이로 해석한다
 - 측정 노이즈 하한: 복수 출처 분자의 출처 간 표준편차 평균 0.301 logS (`LIMITATIONS.md`)
-- 앱 모델 자체(시드 0, 전체 예산)의 test RMSE는 `models/app/meta.json`에 있다
+- 앱 모델 자체(시드 0, 전체 예산, 학습 6,962개)의 test RMSE: B 1.076, D_contrast 1.031 (`models/app/meta.json`, 주 그리드 값과 같음을 학습 스크립트가 확인)
+- 단일 출처(AqSolDB Group G1) 분자는 복수 출처보다 RMSE가 0.13~0.27 크다 (`reports/reliability_aqsoldb.md`)
 
 ## 6. 불확실성
 
-- 앱은 점 예측만 보여 준다. 구간 보정 비교는 `reports/uncertainty_aqsoldb.md` (deep ensemble · MC dropout · conformal)
+- **앱은 점 예측만 보여 준다.** 아래 결과 때문에 단일 모델의 신뢰도 표시를 넣지 않았다
+- 같은 설정(scaffold_random, 시드 10개)에서 90% 구간의 실제 포함률 (`reports/uncertainty_aqsoldb.md`):
+  - deep ensemble 5개: 0.25~0.36, MC dropout: 0.21~0.43 → 크게 과신한다. 표준편차와 |오차|의 Spearman ρ ≤ 0.11
+  - split conformal: 0.83~0.88 (목표 0.90), 폭 3.0~4.5 logS → 거의 맞지만 분자 구분 없이 넓다
+- 앱 예측을 쓸 때는 test RMSE(약 1.0 logS)와 측정 노이즈 하한(0.3 logS)을 오차 크기의 기준으로 삼는다
 
 ## 7. 재현
 

@@ -1,0 +1,35 @@
+{
+ "B_desc_lgbm": {
+  "split": "scaffold_random",
+  "seed": 0,
+  "budget": "full",
+  "n_train": 6962,
+  "hp": {
+   "colsample_bytree": 0.352829024064631,
+   "learning_rate": 0.07797360733808945,
+   "min_child_samples": 4,
+   "n_estimators": 238,
+   "num_leaves": 20,
+   "reg_lambda": 0.0133715697650331,
+   "subsample": 0.7643795128100264
+  },
+  "test_rmse": 1.076138591337218,
+  "source": "aqsoldb_baselines_full.csv"
+ },
+ "D_contrast": {
+  "split": "scaffold_random",
+  "seed": 0,
+  "budget": "full",
+  "n_train": 6962,
+  "hp": {
+   "batch_size": 32,
+   "dropout": 0.07641451203231552,
+   "ffn_hidden": 364,
+   "ffn_layers": 2,
+   "lr": 0.00026054154725729795,
+   "readout": "norm"
+  },
+  "test_rmse": 1.0310840502299479,
+  "source": "aqsoldb_gnn_dcontrast_full.csv"
+ }
+}
