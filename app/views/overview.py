@@ -10,11 +10,11 @@ st.info("**결론: 이 설정에서는 라벨이 몇 개이든 유효하지 않�
         "독성 분류에서는 효과가 없었다. 판정 규칙은 결과를 보기 전에 커밋했다.")
 
 c = st.columns(4)
-c[0].metric("학습 조합", "2,050", "실패 0", delta_color="off", delta_arrow="off", border=True)
-c[1].metric("직접 구현 vs chemprop", "차이 0", "15,326분자, 출력 비트 단위 동일", delta_color="off", delta_arrow="off", border=True)
-c[2].metric("사전학습 효과 · AqSolDB", "+0.07~+0.16", "RMSE 나빠짐 (라벨 300개, Holm 유의)", delta_color="off",
-            delta_arrow="off", border=True)
-c[3].metric("사전학습 효과 · Tox21", "≈ 0", "모든 예산 Holm p = 1.0", delta_color="off", delta_arrow="off", border=True)
+kw = dict(delta_color="off", delta_arrow="off", border=True)
+c[0].metric("학습 조합", "2,050", "실패 0", **kw)
+c[1].metric("직접 구현 vs chemprop", "차이 0", "15,326분자 동일", help="같은 입력에서 출력이 비트 단위로 같다", **kw)
+c[2].metric("사전학습 효과 · AqSolDB", "나빠짐", "RMSE +0.07~0.16", help="라벨 300개, D − C_fixed, 두 방법 모두 Holm 유의", **kw)
+c[3].metric("사전학습 효과 · Tox21", "없음", "Holm p = 1.0", help="모든 예산, D − C_fixed", **kw)
 
 st.subheader("무엇을 비교했나")
 st.markdown("""

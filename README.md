@@ -2,6 +2,8 @@
 
 > 분자 물성 예측에서 자기지도 사전학습의 이득은 라벨 몇 개까지 유효한가?
 
+**🔗 웹 앱: [labelbudget.streamlit.app](https://labelbudget.streamlit.app)** — 라벨 예산 곡선·시드별 비교·심화 분석을 직접 탐색하고, SMILES로 용해도를 예측해 볼 수 있다.
+
 **결론: 이 설정에서는 라벨이 몇 개이든 유효하지 않았다.**
 서술자 + LightGBM(B)이 라벨 100개부터 전체까지 가장 강하거나 같았다. ZINC250k로 사전학습한 D-MPNN(D)은 용해도(AqSolDB)에서 같은 크기의 사전학습 없는 모델보다 오히려 나빴고(부정적 전이), 독성(Tox21 SR-ARE)에서는 효과가 없었다.
 판정 규칙은 결과를 보기 전에 커밋했고([`05_PRETRAIN_SPEC.md`](docs/design/05_PRETRAIN_SPEC.md) §4, 커밋 `3f50a0f`), 부정적 결과를 그대로 보고한다.
@@ -75,7 +77,7 @@ streamlit run app/streamlit_app.py  # http://localhost:8501
 
 - 결과 페이지는 `app/data/*.csv`만 읽는다 (`python scripts/build_app_data.py`로 결과 파일에서 다시 만든다)
 - 배포 전 점검: `python scripts/check_app.py` (앱 환경). 모든 페이지와 예시 분자 26개를 실행한다
-- Streamlit Community Cloud 배포: main file `app/streamlit_app.py`, Python 3.13. 의존성은 `app/requirements.txt`(CPU torch)·`app/packages.txt`
+- Streamlit Community Cloud 배포: main file `app/streamlit_app.py`, Python 3.13. 의존성은 `app/requirements.txt`(CPU torch)·`packages.txt`(LightGBM·RDKit 그림용 시스템 라이브러리)
 - 예측은 시연용이다. 사전학습 모델(D)이 서술자 모델(B)보다 낫지 않다 ([`model_card.md`](docs/model_card.md))
 
 ## 설치

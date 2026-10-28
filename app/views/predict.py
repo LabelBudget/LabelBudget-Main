@@ -46,7 +46,9 @@ def load():
 
 
 def draw(smiles: str) -> str | None:
-    try:  # 그림은 부가 기능이다. 서버 환경에서 그리기가 실패해도 예측은 보여 준다
+    # 그림은 부가 기능이다. 서버 환경에서 그리기가 실패해도 예측은 보여 준다
+    # (Linux RDKit 휠의 cairo는 libX11·libXext·libXrender·libexpat을 시스템에서 찾는다 → packages.txt)
+    try:
         from rdkit.Chem.Draw import rdMolDraw2D
         dr = rdMolDraw2D.MolDraw2DSVG(360, 240)
         dr.drawOptions().clearBackground = False
@@ -89,7 +91,7 @@ with left:
     c1, c2 = st.columns(2)
     c1.metric("B  서술자 + LightGBM", f"{b_pred:.2f} logS")
     c2.metric(f"D  {'마스킹' if d_name == 'D_mask' else '대조학습'} 사전학습 D-MPNN", f"{d_pred:.2f} logS")
-    c2.caption(f"90% 구간 {d_pred - q:.1f} ~ {d_pred + q:.1f} (conformal, 아래 설명)")
+    c2.caption(f"90% 구간 {d_pred - q:.1f} ~ {d_pred + q:.1f}", help="split conformal. 아래 \"모델 정보와 구간의 의미\" 참고")
     known = train[train.smiles == r.smiles]
     ex = examples[(examples.smiles == r.smiles) & examples.measured.notna()]
     if len(known):

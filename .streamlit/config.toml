@@ -5,6 +5,12 @@ primaryColor = "#3d3d3a"
 backgroundColor = "#fcfcfb"
 secondaryBackgroundColor = "#f3f3f0"
 textColor = "#1d1d1f"
+# 한글·영문을 한 글꼴로 (기본값은 영문 Source Sans + 한글 시스템 글꼴이 섞여 들쭉날쭉하다)
+font = "Noto Sans KR:https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap"
+baseFontSize = 15
+headingFontSizes = ["2rem", "1.45rem", "1.2rem", "1.05rem", "1rem", "0.95rem"]
+headingFontWeights = [700, 700, 600, 600, 600, 600]
+metricValueFontSize = "1.7rem"
 
 [browser]
 gatherUsageStats = false
