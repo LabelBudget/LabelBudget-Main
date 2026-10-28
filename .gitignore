@@ -25,3 +25,7 @@ reports/results/**/parts/
 logs/
 # 사전학습 체크포인트(에폭별). 최종 가중치 models/pretrained/*.pt만 커밋
 models/pretrained/ckpt/
+
+# 로컬 도구 설정
+.claude/
+.agents/
